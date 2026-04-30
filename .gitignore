@@ -38,6 +38,7 @@ logs/
 
 # Jupyter
 .ipynb_checkpoints/
+harness/fdg/notebook.ipynb
 
 # Misc
 *.tmp
