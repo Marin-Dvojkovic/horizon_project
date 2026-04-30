@@ -1,0 +1,30 @@
+from,to
+index,id
+index,beer-name
+index,style
+index,ounces
+index,abv
+index,ibu
+index,brewery_id
+index,brewery-name
+index,city
+index,state
+id,index
+id,beer-name
+id,style
+id,ounces
+id,abv
+id,ibu
+id,brewery_id
+id,brewery-name
+id,city
+id,state
+brewery_id,brewery-name
+brewery_id,city
+brewery_id,state
+"beer-name, brewery-name",brewery_id
+"beer-name, brewery-name",city
+"beer-name, brewery-name",state
+"beer-name, city",state
+"style, brewery-name",state
+"abv, brewery-name",state
