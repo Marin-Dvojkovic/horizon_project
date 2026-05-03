@@ -1,9 +1,0 @@
-from,to
-ZipCode,City
-ZipCode,State
-OfficeCode,ZipCode
-OfficeCode,City
-OfficeCode,State
-DeptID,DeptName
-DeptID,ManagerID
-JobRole,SalaryBand

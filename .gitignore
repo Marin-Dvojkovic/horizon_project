@@ -38,7 +38,10 @@ logs/
 
 # Jupyter
 .ipynb_checkpoints/
-harness/fdg/notebook.ipynb
+
+# Claude Code
+claude.md
+harness/
 
 # Misc
 *.tmp
