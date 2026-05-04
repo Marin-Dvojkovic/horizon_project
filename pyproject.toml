@@ -12,8 +12,7 @@ dependencies = [
     "jupyterlab>=4.0",
     "ipykernel>=6.0",
     "networkx>=3.4.2",
-    "matplotlib>=3.10.9",
-    "sodapy>=2.2.0"
+    "matplotlib>=3.10.9"
 ]
 
 [tool.uv]

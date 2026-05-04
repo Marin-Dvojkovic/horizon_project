@@ -121,10 +121,6 @@ def find_strongly_connected_components(G) -> tuple[nx.DiGraph, dict]:
 
 
 def get_topological_sorting(SCCG: nx.DiGraph, member_mapping: dict) -> list[str]:
-    print(
-        f"Ordered SCCs: {[(i, node) for i, node in enumerate(nx.topological_sort(SCCG))]}"
-    )
-
     # Perform topological sorting of SCCG
     topological_sorting: list[str] = []
     for sccg_node in nx.topological_sort(SCCG):
@@ -136,14 +132,15 @@ def get_topological_sorting(SCCG: nx.DiGraph, member_mapping: dict) -> list[str]
 
 def order_fds(topological_sorting: list[str]) -> list[str]:
     # TODO: Proper order representation, for each bound attribute
+    # Pseudocode from the paper:
+    ## for i <- 0 to |Ordered_FDs| do
+    ### forall FD f in Ordered_FDs[i] do
 
     return topological_sorting
 
 
-def main(fds_csv) -> None:
+def get_ordered_fds(fds_csv_path: Path) -> list[str]:
     global set_of_fds
-
-    fds_csv_path: Path = Path(fds_csv)
 
     # Check fds.csv path
     if not fds_csv_path.exists:
@@ -157,13 +154,12 @@ def main(fds_csv) -> None:
     set_of_fds = utils.loaders.get_fds(
         fds_csv_path, utils.loaders.CSVFDLoader(lhs_column_name, rhs_column_name)
     )
-    fds: pd.DataFrame = pd.read_csv(fds_csv_path)
 
     # Determine attribute boundedness
     determine_boundedness(set_of_fds)
 
     # Build FD graph
-    G: nx.DiGraph = build_fd_graph(fds)
+    G: nx.DiGraph = build_fd_graph(pd.read_csv(fds_csv_path))
 
     # Turn FD graph into SCCG
     SCCG, member_mapping = find_strongly_connected_components(G)
@@ -173,16 +169,6 @@ def main(fds_csv) -> None:
 
     # Order functional dependencies
     order: list[str] = order_fds(topological_sorting)
+    print(f"Final traversal order: {order}")
 
-    print(f"Final order: {order}")
-
-
-if __name__ == "__main__":
-    # Parse arguments
-    if len(sys.argv) != 2:
-        print("Usage: python static_fd_analysis.py <fds_csv>")
-        sys.exit(1)
-
-    fds_csv: str = sys.argv[1]
-
-    main(fds_csv)
+    return order

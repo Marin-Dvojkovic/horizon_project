@@ -18,10 +18,12 @@ This installs all dependencies (defined in [`pyproject.toml`](pyproject.toml).) 
 
 ## Running the code
 
+In the project directory, run:
+
 ```bash
-uv run path/to/code.py <args>
+uv run horizon/horizon.py <dataset_dir>
 ```
 
 Explanation of arguments:
 
--
+- _dataset_dir_: Directory containing clean and dirty data, as well as the functional dependencies.
