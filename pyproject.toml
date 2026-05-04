@@ -1,6 +1,8 @@
 [project]
 name = "horizon-project"
 version = "0.1.0"
+description = "Horizon: Scalable Dependency-driven Data Cleaning"
+readme = "README.md"
 requires-python = "==3.10.*"
 dependencies = [
     "pandas>=1.5,<2.0",
@@ -9,6 +11,9 @@ dependencies = [
     "huggingface-hub>=0.20",
     "jupyterlab>=4.0",
     "ipykernel>=6.0",
+    "networkx>=3.4.2",
+    "matplotlib>=3.10.9",
+    "sodapy>=2.2.0"
 ]
 
 [tool.uv]

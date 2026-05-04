@@ -46,3 +46,4 @@ harness/
 # Misc
 *.tmp
 *.bak
+output/
