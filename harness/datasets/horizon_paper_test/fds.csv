@@ -1,0 +1,5 @@
+from,to
+provider_id,provider_address
+provider_address,provider_area_id
+provider_area_id,service_area
+service_area,provider_area_id
