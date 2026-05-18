@@ -8,7 +8,7 @@ def main(dataset_dir: Path) -> None:
     # Build FD pattern graph
 
     # Get traversal order
-    ordered_fds: list[str] = get_ordered_fds(dataset_dir / "fds.csv")
+    ordered_fds: list[list[str]] = get_ordered_fds(dataset_dir / "fds.csv")
 
     # ...
 

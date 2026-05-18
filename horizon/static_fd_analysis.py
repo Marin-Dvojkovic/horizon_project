@@ -1,10 +1,9 @@
 import sys
 from pathlib import Path
 
-import matplotlib.pyplot as plt
-import networkx as nx
-import pandas as pd
+import igraph as ig
 import utils.loaders
+from igraph import Graph
 from utils.fd import FunctionalDependency
 
 # Variables for using different datasets
@@ -69,68 +68,75 @@ def determine_boundedness(fds: list[FunctionalDependency]) -> None:
     print(f"Found {len(bound_attributes)} bound attribute(s): {bound_attributes}.")
 
 
-# Build FD graph from pandas df
-def build_fd_graph(fds: pd.DataFrame) -> nx.DiGraph:
-    # NOTE: Ignores multiple LHS attributes for now
-    fds_simple: pd.DataFrame = fds[
-        ~fds[lhs_column_name].str.contains(",")
-    ]  # TODO: Support hyperedges
+# Build FD graph
+def build_fd_graph() -> Graph:
+    # Create iGraph from tuple list and visualize
+    g: Graph = ig.Graph.TupleList(
+        [(*fd.as_tuple(), i) for i, fd in enumerate(set_of_fds)],
+        directed=True,
+        edge_attrs="fd_index",
+    )  # TODO: Support hyperedges
 
-    # Create graph from pandas df
-    G: nx.DiGraph = nx.from_pandas_edgelist(
-        df=fds_simple,
-        source=lhs_column_name,
-        target=rhs_column_name,
-        create_using=nx.DiGraph(),
+    ig.plot(
+        g,
+        vertex_color="green",
+        vertex_label=g.vs["name"],
+        edge_label=g.es["fd_index"],
+        target=output_dir / "fd_graph.png",
     )
 
-    print(f"FD graph has {G.number_of_nodes()} nodes and {G.number_of_edges()} edges.")
+    print(f"FD graph has {g.vcount()} nodes and {g.ecount()} edges.")
 
-    # Save figure as .png
-    nx.draw(G, with_labels=True, pos=nx.circular_layout(G))
-    plt.savefig(output_dir / "fd_graph.png")
-    plt.clf()
-
-    return G
+    return g
 
 
-def find_strongly_connected_components(G) -> tuple[nx.DiGraph, dict]:
-    # Build condensation graph (SCCG)
-    SCCG: nx.DiGraph = nx.condensation(
-        G
-    )  # Builds SCCG with nx.strongly_connected_components(G)
-    member_mapping: dict = {
-        node_data[0]: node_data[1]["members"] for node_data in SCCG.nodes.data()
-    }
-
-    print(
-        f"SCC graph has {SCCG.number_of_nodes()} components and {SCCG.number_of_edges()} edges."
+def find_strongly_connected_components(g: Graph) -> tuple[Graph, ig.VertexClustering]:
+    # Compute and visualize components
+    components: ig.VertexClustering = ig.Graph.components(g)
+    ig.plot(
+        components,
+        palette=ig.RainbowPalette(),
+        vertex_label=g.vs["name"],
+        target=output_dir / "fd_graph_components.png",
     )
 
-    # Save figure as .png
-    nx.draw(
-        SCCG,
-        with_labels=True,
-        labels=member_mapping,
-        pos=nx.circular_layout(SCCG),
+    # Build and visualize cluster graph (SCCG)
+    sccg: Graph = components.cluster_graph(
+        combine_vertices={
+            "name": lambda names: ",".join(names),
+        },
+        combine_edges={"fd_index": lambda indices: indices},
     )
-    plt.savefig(output_dir / "scc_fd_graph.png")
-    plt.clf()
+    ig.plot(
+        sccg,
+        vertex_color="green",
+        vertex_label=sccg.vs["name"],
+        edge_label=sccg.es["fd_index"],
+        target=output_dir / "scc_fd_graph.png",
+    )
 
-    return SCCG, member_mapping
+    print(f"SCC graph has {sccg.vcount()} components and {sccg.ecount()} edges.")
+
+    return sccg, components
 
 
-def get_topological_sorting(SCCG: nx.DiGraph, member_mapping: dict) -> list[str]:
-    # Perform topological sorting of SCCG
-    topological_sorting: list[str] = []
-    for sccg_node in nx.topological_sort(SCCG):
-        for attribute in member_mapping[sccg_node]:
-            topological_sorting.append(attribute)
+def get_topological_sorting(
+    sccg: Graph, components: ig.VertexClustering
+) -> list[list[str]]:
+    # Perform topological sorting of each subgraph of SCCG
+    topological_sorting: list[list[str]] = [
+        [
+            name
+            for i in subg.topological_sorting(mode="out")
+            for name in sccg.vs.find(name=subg.vs[i]["name"])["name"].split(",")
+        ]
+        for subg in sccg.decompose(mode="weak")
+    ]
 
     return topological_sorting
 
 
-def order_fds(topological_sorting: list[str]) -> list[str]:
+def order_fds(topological_sorting: list[list[str]]) -> list[list[str]]:
     # TODO: Proper order representation, for each bound attribute
     # Pseudocode from the paper:
     ## for i <- 0 to |Ordered_FDs| do
@@ -139,7 +145,7 @@ def order_fds(topological_sorting: list[str]) -> list[str]:
     return topological_sorting
 
 
-def get_ordered_fds(fds_csv_path: Path) -> list[str]:
+def get_ordered_fds(fds_csv_path: Path) -> list[list[str]]:
     global set_of_fds
 
     # Check fds.csv path
@@ -159,16 +165,16 @@ def get_ordered_fds(fds_csv_path: Path) -> list[str]:
     determine_boundedness(set_of_fds)
 
     # Build FD graph
-    G: nx.DiGraph = build_fd_graph(pd.read_csv(fds_csv_path))
+    g: Graph = build_fd_graph()
 
     # Turn FD graph into SCCG
-    SCCG, member_mapping = find_strongly_connected_components(G)
+    sccg, components = find_strongly_connected_components(g)
 
     # Perform topological sorting on SCCG
-    topological_sorting: list[str] = get_topological_sorting(SCCG, member_mapping)
+    topological_sorting: list[list[str]] = get_topological_sorting(sccg, components)
 
     # Order functional dependencies
-    order: list[str] = order_fds(topological_sorting)
+    order: list[list[str]] = order_fds(topological_sorting)
     print(f"Final traversal order: {order}")
 
     return order
