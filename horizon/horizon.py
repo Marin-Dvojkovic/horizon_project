@@ -2,13 +2,14 @@ import sys
 from pathlib import Path
 
 from static_fd_analysis import get_ordered_fds
+from utils.fd import FunctionalDependency
 
 
 def main(dataset_dir: Path) -> None:
     # Build FD pattern graph
 
     # Get traversal order
-    ordered_fds: list[list[str]] = get_ordered_fds(dataset_dir / "fds.csv")
+    ordered_fds: list[FunctionalDependency] = get_ordered_fds(dataset_dir / "fds.csv")
 
     # ...
 
