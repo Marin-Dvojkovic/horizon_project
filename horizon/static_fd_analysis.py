@@ -71,7 +71,7 @@ def determine_boundedness(fds: list[FunctionalDependency]) -> None:
 
 
 # Build FD graph
-def build_fd_graph() -> Graph:
+def build_fd_graph() -> ig.Graph:
     # Create iGraph from tuple list and visualize
     g: ig.Graph = ig.Graph.TupleList(
         [(*fd.as_tuple(), i) for i, fd in enumerate(set_of_fds)],
@@ -93,7 +93,7 @@ def build_fd_graph() -> Graph:
 
 
 # Find strongly connected components and build SCC graph
-def find_strongly_connected_components(g: ig.Graph) -> Graph:
+def find_strongly_connected_components(g: ig.Graph) -> ig.Graph:
     # Compute and visualize components
     components: ig.VertexClustering = ig.Graph.components(g)
     ig.plot(
@@ -104,33 +104,33 @@ def find_strongly_connected_components(g: ig.Graph) -> Graph:
     )
 
     # Build and visualize cluster graph (SCCG)
-    sccg: ig.Graph = components.cluster_graph(
+    scc_g: ig.Graph = components.cluster_graph(
         combine_vertices={
             "name": lambda names: names,
         },
         combine_edges={"fd_index": lambda fd_indices: fd_indices},
     )
     ig.plot(
-        sccg,
+        scc_g,
         vertex_color="green",
-        vertex_label=sccg.vs["name"],
-        edge_label=sccg.es["fd_index"],
+        vertex_label=scc_g.vs["name"],
+        edge_label=scc_g.es["fd_index"],
         target=output_dir / "scc_fd_graph.png",
     )
 
-    print(f"SCC graph has {sccg.vcount()} components and {sccg.ecount()} edges.")
+    print(f"SCC graph has {scc_g.vcount()} components and {scc_g.ecount()} edges.")
 
-    return sccg
+    return scc_g
 
 
 # Implements Hierholzer's linear time algorithm for constructing an Eulerian cycle/tour
-def order_subg(subg: ig.Graph) -> list[FunctionalDependency]:
+def order_subg(sub_g: ig.Graph) -> list[FunctionalDependency]:
     sub_order: list[FunctionalDependency] = []
 
     # Graph attributes
-    n: int = subg.vcount()
-    in_degrees: list[int] = [subg.indegree(i) for i in range(n)]
-    out_degrees: list[int] = [subg.outdegree(i) for i in range(n)]
+    n: int = sub_g.vcount()
+    in_degrees: list[int] = [sub_g.indegree(i) for i in range(n)]
+    out_degrees: list[int] = [sub_g.outdegree(i) for i in range(n)]
 
     # Check requirements for Eulerian cycle/tour
     uneven_vertices: list[int] = [
@@ -157,7 +157,7 @@ def order_subg(subg: ig.Graph) -> list[FunctionalDependency]:
                 "Not possible to find a Eulerian tour and therrefore not possible to order FDs."
             )
         # Add artificial edge from end to start, in order to compute Eulerian cycle
-        subg.add_edge(end_v, start_v)
+        sub_g.add_edge(end_v, start_v)
         out_degrees[end_v] += 1
         in_degrees[start_v] += 1
 
@@ -169,13 +169,13 @@ def order_subg(subg: ig.Graph) -> list[FunctionalDependency]:
     c = 0
     lhs_v: int = start_v
 
-    while c < subg.ecount():
+    while c < sub_g.ecount():
         traversed_edge_count[lhs_v] += 1
         i: int = traversed_edge_count[lhs_v]
 
         # Reverse traversal of vertices (follow incoming edges from lhs_v)
         if i <= in_degrees[lhs_v]:
-            rhs_v: int = subg.neighbors(lhs_v, mode="in")[i - 1]
+            rhs_v: int = sub_g.neighbors(lhs_v, mode="in")[i - 1]
             if not visited[rhs_v]:
                 if rhs_v != start_v:
                     # Mark predecessor when reached for the first time
@@ -191,7 +191,7 @@ def order_subg(subg: ig.Graph) -> list[FunctionalDependency]:
         # Skip edge
         if (
             i <= out_degrees[lhs_v]
-            and subg.neighbors(lhs_v, mode="out")[i - 1] == rhs_v
+            and sub_g.neighbors(lhs_v, mode="out")[i - 1] == rhs_v
             and not skipped[lhs_v]
         ):
             skipped[lhs_v] = True
@@ -199,10 +199,10 @@ def order_subg(subg: ig.Graph) -> list[FunctionalDependency]:
             i += 1
 
         if i <= out_degrees[lhs_v]:
-            rhs_v = subg.neighbors(lhs_v, mode="out")[i - 1]
+            rhs_v = sub_g.neighbors(lhs_v, mode="out")[i - 1]
 
         # Write traversed edge to sub-order
-        sub_order.append(subg.es.find(_source=lhs_v, _target=rhs_v)["fd_index"])
+        sub_order.append(sub_g.es.find(_source=lhs_v, _target=rhs_v)["fd_index"])
         c += 1
         lhs_v = rhs_v
 
@@ -211,49 +211,56 @@ def order_subg(subg: ig.Graph) -> list[FunctionalDependency]:
 
 
 # Implements Kahn's Algorithm for computing a topological sorting using BFS
-def get_topological_sorting(g: ig.Graph, sccg: ig.Graph) -> list[FunctionalDependency]:
+def get_topological_sorting(
+    component_g: ig.Graph, originalg: ig.Graph
+) -> list[FunctionalDependency]:
     ordered_fds: list[FunctionalDependency] = []
 
-    # Start with vertices of SCCG with in-degree 0
-    vertices: list[ig.Vertex] = [v for v in sccg.vs.select(_indegree_eq=0)]
+    # Start with vertices of graph with in-degree 0
+    vertices: list[ig.Vertex] = [v for v in component_g.vs.select(_indegree_eq=0)]
 
     while vertices:
-        component = vertices.pop(0)
+        component_v = vertices.pop(0)
 
         # If component contains more than 1 vertex
-        if len(component["name"]) > 1:
+        if len(component_v["name"]) > 1:
             # Compute order of this component via Eulerian tour of subgraph
-            subg = g.induced_subgraph(
-                g.vs.select(name_in=component["name"]),
+            sub_g = originalg.induced_subgraph(
+                originalg.vs.select(name_in=component_v["name"]),
                 implementation="create_from_scratch",
             )
-            ordered_fds += order_subg(subg)
+            ordered_fds += order_subg(sub_g)
 
         # Iterate over neighbors
-        for next_vertex in sccg.neighbors(component, mode="out"):
+        for next_vertex in component_g.neighbors(component_v, mode="out"):
             # Add edge information to ordering and delete it
-            edge: ig.Edge = sccg.es.find(_source=component, _target=next_vertex)
+            edge: ig.Edge = component_g.es.find(
+                _source=component_v, _target=next_vertex
+            )
             ordered_fds += [set_of_fds[fd_index] for fd_index in edge["fd_index"]]
-            sccg.delete_edges(edge)
+            component_g.delete_edges(edge)
             # If neighboring vertex now has in-degree 0, add it to vertices queue
-            if sccg.indegree(next_vertex) == 0:
-                vertices.append(sccg.vs[next_vertex])
+            if component_g.indegree(next_vertex) == 0:
+                vertices.append(component_g.vs[next_vertex])
 
-    if len(ordered_fds) != len(set_of_fds):
+    return ordered_fds
+
+
+def order_fds(g: ig.Graph, scc_g: ig.Graph) -> list[list[FunctionalDependency]]:
+    # Perform topological sorting of each subgraph of SCCG
+    ordered_fds: list[list[FunctionalDependency]] = [
+        get_topological_sorting(sub_g, g) for sub_g in scc_g.decompose(mode="weak")
+    ]
+
+    if sum([len(order) for order in ordered_fds]) != len(set_of_fds):
         raise RuntimeError(
-            f"Ordered FDs have length {len(ordered_fds)} while therer are {len(set_of_fds)} FDs."
+            f"Ordered FDs have length {sum([len(order) for order in ordered_fds])} while therer are {len(set_of_fds)} FDs."
         )
 
     return ordered_fds
 
 
-def order_fds(
-    topological_sorting: list[FunctionalDependency],
-) -> list[FunctionalDependency]:
-    return topological_sorting
-
-
-def get_ordered_fds(fds_csv_path: Path) -> list[FunctionalDependency]:
+def get_ordered_fds(fds_csv_path: Path) -> list[list[FunctionalDependency]]:
     global set_of_fds
 
     # Check fds.csv path
@@ -276,11 +283,11 @@ def get_ordered_fds(fds_csv_path: Path) -> list[FunctionalDependency]:
     g: ig.Graph = build_fd_graph()
 
     # Turn FD graph into SCCG
-    sccg: ig.Graph = find_strongly_connected_components(g)
+    scc_g: ig.Graph = find_strongly_connected_components(g)
 
     # Perform topological sorting on SCCG and get order of functional dependencies
-    topological_sorting: list[FunctionalDependency] = get_topological_sorting(g, sccg)
+    ordered_fds: list[list[FunctionalDependency]] = order_fds(g, scc_g)
 
-    print(f"Final traversal order: {topological_sorting}")
+    print(f"Final traversal order: {ordered_fds}")
 
-    return topological_sorting
+    return ordered_fds

@@ -9,7 +9,9 @@ def main(dataset_dir: Path) -> None:
     # Build FD pattern graph
 
     # Get traversal order
-    ordered_fds: list[FunctionalDependency] = get_ordered_fds(dataset_dir / "fds.csv")
+    ordered_fds: list[list[FunctionalDependency]] = get_ordered_fds(
+        dataset_dir / "fds.csv"
+    )
 
     # ...
 
