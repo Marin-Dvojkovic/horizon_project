@@ -172,9 +172,10 @@ class FDGraph:
                         edges_visited += 1
             
             # Calculate quality for this edge
-            edge_support = edge_data['support']
+            first_edge_support = edge_data['support']
             if edges_visited > 0:
-                quality = (edge_support + total_support_sum) / (edges_visited + 1)
+                #quality = (edge_support + total_support_sum) / (edges_visited + 1)
+                quality = (first_edge_support + total_support_sum) / (edges_visited + 1)
             else:
                 quality = edge_support  # If no other edges reachable, quality = support
             
@@ -238,31 +239,6 @@ class FDGraph:
                     dependents.append((row_idx, target_col))
         
         return dependents
-    
-    def get_determinant_cells(self, row_idx: int, col_name: str) -> list[tuple[int, str]]:
-        """
-        Get all cells that determine the given cell via functional dependencies.
-        
-        Args:
-            row_idx: Row index
-            col_name: Column name
-            
-        Returns:
-            List of (row_idx, col_name) tuples for determinant cells
-        """
-        value = self.df.loc[row_idx, col_name]
-        target_node = self._cell_node_id(col_name, value)
-        determinants = []
-        
-        for _, fd in self.fd_df.iterrows():
-            if fd['to'] == col_name:
-                source_col = fd['from']
-                source_value = self.df.loc[row_idx, source_col]
-                source_node = self._cell_node_id(source_col, source_value)
-                if source_node in self.graph:
-                    determinants.append((row_idx, source_col))
-        
-        return determinants
     
     def get_cells_with_value(self, col_name: str, value) -> list[int]:
         """
@@ -358,7 +334,7 @@ class FDGraph:
                 _, to_value = self._parse_node_id(best_edge)
                 
                 # Format the step
-                fd_name = f"fd{fd_idx + 1}"
+                fd_name = f"FD: {from_col} > {to_col}"
                 step = f'({fd_name}, {{"{from_value}", "{to_value}"}})'
                 path_steps.append(step)
                 
@@ -376,8 +352,8 @@ class FDGraph:
 # Example usage
 if __name__ == "__main__":
     # Load the beers dataset
-    data_path = "../datasets/beers/dirty.csv"
-    fd_path = "../datasets/beers/fds.csv"
+    data_path = "../datasets/horizon_paper_test/dirty.csv"
+    fd_path = "../datasets/horizon_paper_test/fds.csv"
     
     fd_graph = FDGraph(data_path, fd_path)
     

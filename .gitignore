@@ -38,6 +38,7 @@ logs/
 
 # Jupyter
 .ipynb_checkpoints/
+horizon/fdgnotebook.ipynb
 
 # Claude Code
 claude.md
@@ -47,3 +48,6 @@ harness/
 *.tmp
 *.bak
 output/
+
+# Datasets
+datasets/
