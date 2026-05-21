@@ -26,3 +26,6 @@ class FunctionalDependency:
     # required by __eq__; allows use in sets and as dict keys (e.g. fd in seen_fds)
     def __hash__(self) -> int:
         return hash((self._lhs, self._rhs))
+
+    def as_tuple(self) -> tuple:
+        return (", ".join(self._lhs), self.rhs)
