@@ -1,6 +1,6 @@
 import sys
+import time
 from pathlib import Path
-from threading import setprofile
 
 import pandas as pd
 import utils.loaders
@@ -48,41 +48,51 @@ def main(dataset_dir: Path) -> None:
         fd: {} for fd in set_of_fds
     }
 
+    start = time.time()
     # Iterate over tuples and compute pattern expression for each
-    for t, row in dirty_data.iterrows():
+    for t in range(len(dirty_data)):
         p_exp: PatternExpression = PatternExpression(t)
-        graph_position: str = ""
         for i in range(len(ordered_fds)):
             for fd in ordered_fds[i]:
                 lval: str = str(
-                    row[fd.lhs[0]]
+                    dirty_data.at[t, fd.lhs[0]]
                 )  # TODO: Support multiple attributes on LHS
+                rval: str = str(dirty_data.at[t, fd.rhs])
                 existing_pattern: FDPattern | None = p_exp.attribute_in_expression(
                     fd.rhs
                 )
                 if lval in repair_table[fd]:
                     # LHS value for this FD has been seen before (entry in table)
-                    pattern: FDPattern = FDPattern(fd, lval, repair_table[fd][lval])
+                    rval = repair_table[fd][lval]
+                    pattern: FDPattern = FDPattern(fd, lval, rval)
                     p_exp.add_fd_pattern(pattern)
                 elif existing_pattern is not None:
                     # RHS attribute is part of a previous FD, therefore use the same RHS value
-                    rval: str = existing_pattern.rval
+                    rval = existing_pattern.rval
                     pattern: FDPattern = FDPattern(fd, lval, rval)
                     p_exp.add_fd_pattern(pattern)
                     repair_table[fd][lval] = rval
                 else:
                     # Choose best edge from FD pattern graph
-                    graph_position, lval, rval = fd_graph.choose_best_next_edge(
-                        graph_position, fd.lhs[0], lval, fd.rhs
-                    )
+                    rhs, rval = fd_graph.choose_best_next_edge(fd.lhs[0], lval, fd.rhs)
                     pattern: FDPattern = FDPattern(fd, lval, rval)
                     p_exp.add_fd_pattern(pattern)
                     repair_table[fd][lval] = rval
 
+                # Apply repair in place
+                dirty_data.at[t, fd.rhs] = rval
+
         pattern_expressions.append(p_exp)
 
+    end = time.time()
+
     print(f"Repair table:\n{repair_table}\n")
-    print(f"Pattern expressions:\n{pattern_expressions}\n")
+    print("Pattern expressions:\n")
+    print("\n\n".join(f"{str(p_exp)}" for p_exp in pattern_expressions))
+
+    print(f"\nFinished. Took {end - start}s to repair {len(dirty_data)} tuples.")
+
+    dirty_data.to_csv("output/cleaned_data_result.csv", index=False)
 
 
 if __name__ == "__main__":

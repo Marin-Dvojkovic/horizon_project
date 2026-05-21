@@ -363,32 +363,8 @@ class FDGraph:
 
         return results
 
-    def choose_best_next_edge(
-        self, position: str, lhs: str, lval: str, rhs: str
-    ) -> tuple[str, str, str]:
-        current_node: str = position
-        chosen_lval: str = lval
-
-        if (
-            current_node not in self.graph.nodes()
-            or len(
-                [
-                    successor
-                    for successor in self.graph.successors(current_node)
-                    if self._parse_node_id(successor)[0] == rhs
-                ]
-            )
-            == 0
-        ):
-            # Find new position if this is the start node or if previous position doesn't lead to correct attribute (new sub-component of the graph)
-            for node_id in self.graph.nodes():
-                node_attribute, node_val = self._parse_node_id(node_id)
-                if node_attribute == lhs and node_val == lval:
-                    current_node = node_id
-                    break
-        else:
-            # Start from last position
-            _, chosen_lval = self._parse_node_id(position)
+    def choose_best_next_edge(self, lhs: str, lval: str, rhs: str) -> tuple[str, str]:
+        current_node: str = self._cell_node_id(lhs, lval)
 
         successors: list[str] = [
             successor
@@ -398,20 +374,18 @@ class FDGraph:
 
         best_edge: str | None = None
         best_quality = -1
-        rval: str = ""
 
         for next_node in successors:
             quality = self.graph[current_node][next_node]["quality"]
             if quality > best_quality:
                 best_quality = quality
                 best_edge = next_node
-                rval = self._parse_node_id(next_node)[1]
 
         if best_edge is None:
             # No valid edge found for this FD
-            raise RuntimeError(f"No valid edge found from {position} to {rhs}.\n")
+            raise RuntimeError(f"No valid edge found from {current_node} to {rhs}.\n")
 
-        return (best_edge, chosen_lval, rval)
+        return self._parse_node_id(best_edge)
 
 
 # Example usage
