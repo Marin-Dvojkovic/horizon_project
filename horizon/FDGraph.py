@@ -215,31 +215,6 @@ class FDGraph:
         """Get full graph data type."""
         return self.graph
     
-    def get_dependent_cells(self, row_idx: int, col_name: str) -> list[tuple[int, str]]:
-        """
-        Get all cells in the same row that depend on the given cell via functional dependencies.
-        
-        Args:
-            row_idx: Row index
-            col_name: Column name
-            
-        Returns:
-            List of (row_idx, col_name) tuples for dependent cells
-        """
-        value = self.df.loc[row_idx, col_name]
-        source_node = self._cell_node_id(col_name, value)
-        dependents = []
-        
-        for _, fd in self.fd_df.iterrows():
-            if fd['from'] == col_name:
-                target_col = fd['to']
-                target_value = self.df.loc[row_idx, target_col]
-                target_node = self._cell_node_id(target_col, target_value)
-                if target_node in self.graph:
-                    dependents.append((row_idx, target_col))
-        
-        return dependents
-    
     def get_cells_with_value(self, col_name: str, value) -> list[int]:
         """
         Get all row indices where the given column has the specified value.
@@ -269,26 +244,33 @@ class FDGraph:
             "average_edge_quality": avg_quality
         }
     
-    def traverse_best_quality_path(self, ordered_fds: list[tuple[str, str]]) -> dict:
+    def traverse_best_quality_path(self, ordered_attributes: list[str]) -> dict:
         """
-        Traverse the graph following ordered FDs, picking highest quality edges.
+        Traverse the graph following ordered attributes from static_fd_analysis, picking highest quality edges.
         
-        For each starting node in the first FD, follows the chain of FDs,
+        For each starting node in the first column, follows the chain of columns,
         selecting the highest quality edge at each step.
         
         Args:
-            ordered_fds: List of tuples (from_col, to_col) representing the FD chain to follow
+            ordered_attributes: List of attributes in topological order (from static_fd_analysis.get_ordered_fds)
             
         Returns:
             Dictionary with starting node as key and formatted path as value
         """
-        if not ordered_fds:
+        if not ordered_attributes or len(ordered_attributes) < 2:
             return {}
+        
+        # Convert ordered attributes to FD tuples
+        ordered_fds = []
+        for i in range(len(ordered_attributes) - 1):
+            from_col = ordered_attributes[i]
+            to_col = ordered_attributes[i + 1]
+            ordered_fds.append((from_col, to_col))
         
         results = {}
         
-        # Get the first FD to identify starting nodes
-        first_from_col, _ = ordered_fds[0]
+        # Get the first attribute to identify starting nodes
+        first_from_col = ordered_attributes[0]
         
         # Find all unique starting nodes (nodes from the first column)
         starting_nodes = set()
@@ -303,7 +285,7 @@ class FDGraph:
             path_steps = []
             current_node = start_node
             
-            for fd_idx, (from_col, to_col) in enumerate(ordered_fds):
+            for from_col, to_col in ordered_fds:
                 # Get all outgoing edges from current node
                 best_edge = None
                 best_quality = -1
@@ -350,7 +332,7 @@ class FDGraph:
 
 
 # Example usage
-if __name__ == "__main__":
+'''if __name__ == "__main__":
     # Load the beers dataset
     data_path = "../datasets/horizon_paper_test/dirty.csv"
     fd_path = "../datasets/horizon_paper_test/fds.csv"
@@ -376,7 +358,7 @@ if __name__ == "__main__":
     
     # Example: Traverse best quality paths for ordered FDs
     print(f"\n=== Best Quality Paths ===")
-    '''ordered_fds = [("id","brewery_id"),("brewery_id","brewery-name")]'''
+    ordered_fds = [("id","brewery_id"),("brewery_id","brewery-name")]
     ordered_fds = [
         ("provider_id", "provider_adress"),
         ("provider_adress", "provider_area_id"),
@@ -387,7 +369,6 @@ if __name__ == "__main__":
     for node_id, path_str in list(paths.items())[:20]:  # Show first 5 paths
         print(f"  {path_str}")
     
-    '''  
     nodes = "DeptName"
     
     # Example: Get node info for the (column, value) pair at row 0, column 'DeptName'

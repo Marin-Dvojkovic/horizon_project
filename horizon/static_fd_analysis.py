@@ -143,11 +143,11 @@ def get_ordered_fds(fds_csv_path: Path) -> list[str]:
     global set_of_fds
 
     # Check fds.csv path
-    if not fds_csv_path.exists:
+    if not fds_csv_path.exists():
         raise ValueError(f"CSV file {str(fds_csv_path)} does not exist.")
 
     # Create output directory
-    if not output_dir.exists:
+    if not output_dir.exists():
         output_dir.mkdir()
 
     # Use CSV data loader to read input FDs from file
