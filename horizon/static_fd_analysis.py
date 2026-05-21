@@ -4,13 +4,8 @@ from symtable import Function
 from textwrap import indent
 
 import igraph as ig
-import utils.loaders
 from igraph import Graph
 from utils.fd import FunctionalDependency
-
-# Variables for using different datasets
-lhs_column_name: str = "LHS"
-rhs_column_name: str = "RHS"
 
 output_dir: Path = Path("output")
 
@@ -74,7 +69,11 @@ def determine_boundedness(fds: list[FunctionalDependency]) -> None:
 def build_fd_graph() -> ig.Graph:
     # Create iGraph from tuple list and visualize
     g: ig.Graph = ig.Graph.TupleList(
-        [(*fd.as_tuple(), i) for i, fd in enumerate(set_of_fds)],
+        [
+            (*fd.as_tuple(), i)
+            for i, fd in enumerate(set_of_fds)
+            if "," not in fd.as_tuple()[0]
+        ],
         directed=True,
         edge_attrs="fd_index",
     )  # TODO: Support hyperedges
@@ -252,29 +251,24 @@ def order_fds(g: ig.Graph, scc_g: ig.Graph) -> list[list[FunctionalDependency]]:
         get_topological_sorting(sub_g, g) for sub_g in scc_g.decompose(mode="weak")
     ]
 
-    if sum([len(order) for order in ordered_fds]) != len(set_of_fds):
-        raise RuntimeError(
-            f"Ordered FDs have length {sum([len(order) for order in ordered_fds])} while therer are {len(set_of_fds)} FDs."
-        )
+    # TODO: Uncomment if multiple attributes on LHS supported in FDs
+    # if sum([len(order) for order in ordered_fds]) != len(set_of_fds):
+    #     raise RuntimeError(
+    #         f"Ordered FDs have length {sum([len(order) for order in ordered_fds])} while therer are {len(set_of_fds)} FDs."
+    #     )
 
     return ordered_fds
 
 
-def get_ordered_fds(fds_csv_path: Path) -> list[list[FunctionalDependency]]:
+def get_ordered_fds(
+    fds: list[FunctionalDependency],
+) -> list[list[FunctionalDependency]]:
     global set_of_fds
-
-    # Check fds.csv path
-    if not fds_csv_path.exists:
-        raise ValueError(f"CSV file {str(fds_csv_path)} does not exist.")
+    set_of_fds = fds
 
     # Create output directory
     if not output_dir.exists:
         output_dir.mkdir()
-
-    # Use CSV data loader to read input FDs from file
-    set_of_fds = utils.loaders.get_fds(
-        fds_csv_path, utils.loaders.CSVFDLoader(lhs_column_name, rhs_column_name)
-    )
 
     # Determine attribute boundedness
     determine_boundedness(set_of_fds)
@@ -288,6 +282,6 @@ def get_ordered_fds(fds_csv_path: Path) -> list[list[FunctionalDependency]]:
     # Perform topological sorting on SCCG and get order of functional dependencies
     ordered_fds: list[list[FunctionalDependency]] = order_fds(g, scc_g)
 
-    print(f"Final traversal order: {ordered_fds}")
+    print(f"Final traversal order: {ordered_fds}\n")
 
     return ordered_fds

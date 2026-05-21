@@ -19,7 +19,9 @@ class FunctionalDependency:
         return f"FD({lhs_str} -> {self._rhs})"
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, FunctionalDependency):
+        if isinstance(other, tuple) and isinstance(other[0], tuple):
+            return self._lhs == other[0] and self._rhs == other[1]
+        elif not isinstance(other, FunctionalDependency):
             return NotImplemented
         return self._lhs == other._lhs and self._rhs == other._rhs
 
