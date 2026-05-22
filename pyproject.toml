@@ -13,8 +13,7 @@ dependencies = [
     "ipykernel>=6.0",
     "networkx>=3.4.2",
     "matplotlib>=3.10.9",
-    "igraph>=1.0.0",
-    "pycairo>=1.29.0"
+    "igraph>=1.0.0"
 ]
 
 [tool.uv]
