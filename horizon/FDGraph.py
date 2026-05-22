@@ -8,12 +8,16 @@ Each unique (column, value) pair becomes a node. This means:
 """
 
 from collections import Counter
+from pathlib import Path
 from platform import node
 from typing import Optional
 
 import matplotlib.pyplot as plt
 import networkx as nx
 import pandas as pd
+
+output_dir: Path = Path("output")
+enable_plotting: bool = True
 
 lhs_column_name: str = "LHS"
 rhs_column_name: str = "RHS"
@@ -139,9 +143,10 @@ class FDGraph:
                 initial_sup / fd_counter[(edge_data["fd_from"], edge_data["fd_to"])]
             )
 
-        nx.draw(G, with_labels=True, pos=nx.circular_layout(G))
-        plt.savefig("output/fd_pattern_graph.png")
-        plt.clf()
+        if enable_plotting:
+            nx.draw(G, with_labels=True, pos=nx.circular_layout(G))
+            plt.savefig(str(output_dir / "fd_pattern_graph.png"))
+            plt.clf()
 
         return G
 
