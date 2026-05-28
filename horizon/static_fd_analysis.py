@@ -1,4 +1,5 @@
 import sys
+import time
 from pathlib import Path
 
 import igraph as ig
@@ -10,6 +11,7 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 output_dir: Path = Path("output")
+dataset_name: str = ""
 enable_plotting: bool = True
 
 # Use matplotlib as backend for igraph
@@ -21,10 +23,10 @@ bound_attributes: set[str] = set()
 
 
 # Build FD graph
-def build_fd_graph() -> ig.Graph:
+def build_fd_graph() -> Graph:
     logger.info(f"Building FD graph from {len(set_of_fds)} functional dependencies")
     # Create iGraph from tuple list and visualize
-    g: ig.Graph = ig.Graph.TupleList(
+    g: Graph = Graph.TupleList(
         [
             (*fd.as_tuple(), i)
             for i, fd in enumerate(set_of_fds)
@@ -48,7 +50,7 @@ def build_fd_graph() -> ig.Graph:
         )
 
         plt.gca().invert_yaxis()  # Plot tree with root at top
-        plt.savefig(str(output_dir / "fd_graph.png"))
+        plt.savefig(str(output_dir / f"{dataset_name}_fd_graph.png"))
         plt.clf()
 
     logger.info(f"FD graph built: {g.vcount()} vertices and {g.ecount()} edges")
@@ -56,10 +58,10 @@ def build_fd_graph() -> ig.Graph:
 
 
 # Find strongly connected components and build SCC graph
-def find_strongly_connected_components(g: ig.Graph) -> ig.Graph:
+def find_strongly_connected_components(g: Graph) -> Graph:
     logger.info("Finding strongly connected components...")
     # Compute and visualize components
-    components: ig.VertexClustering = ig.Graph.components(g)
+    components: ig.VertexClustering = Graph.components(g)
     logger.debug(f"Found {len(components)} components")
 
     if enable_plotting:
@@ -75,12 +77,12 @@ def find_strongly_connected_components(g: ig.Graph) -> ig.Graph:
         )
 
         plt.gca().invert_yaxis()  # Plot tree with root at top
-        plt.savefig(str(output_dir / "fd_graph_components.png"))
+        plt.savefig(str(output_dir / f"{dataset_name}_fd_graph_components.png"))
         plt.clf()
 
     # Build and visualize cluster graph (SCCG)
     logger.info("Building SCC graph...")
-    scc_g: ig.Graph = components.cluster_graph(
+    scc_g: Graph = components.cluster_graph(
         combine_vertices={
             "name": lambda names: names,
         },
@@ -101,15 +103,17 @@ def find_strongly_connected_components(g: ig.Graph) -> ig.Graph:
         )
 
         plt.gca().invert_yaxis()  # Plot tree with root at top
-        plt.savefig(str(output_dir / "scc_fd_graph.png"))
+        plt.savefig(str(output_dir / f"{dataset_name}_scc_fd_graph.png"))
         plt.clf()
 
-    logger.info(f"SCC graph built: {scc_g.vcount()} components and {scc_g.ecount()} edges")
+    logger.info(
+        f"SCC graph built: {scc_g.vcount()} components and {scc_g.ecount()} edges"
+    )
     return scc_g
 
 
 # Implements Hierholzer's linear time algorithm for constructing an Eulerian cycle/tour
-def order_subg(sub_g: ig.Graph) -> list[FunctionalDependency]:
+def order_subg(sub_g: Graph) -> list[FunctionalDependency]:
     sub_order: list[FunctionalDependency] = []
 
     # Graph attributes
@@ -197,7 +201,7 @@ def order_subg(sub_g: ig.Graph) -> list[FunctionalDependency]:
 
 # Implements Kahn's Algorithm for computing a topological sorting using BFS
 def get_topological_sorting(
-    component_g: ig.Graph, original_g: ig.Graph
+    component_g: Graph, original_g: Graph
 ) -> list[FunctionalDependency]:
     ordered_fds: list[FunctionalDependency] = []
 
@@ -231,7 +235,7 @@ def get_topological_sorting(
     return ordered_fds
 
 
-def order_fds(g: ig.Graph, scc_g: ig.Graph) -> list[list[FunctionalDependency]]:
+def order_fds(g: Graph, scc_g: Graph) -> list[list[FunctionalDependency]]:
     # Perform topological sorting of each sub-component of SCCG
     ordered_fds: list[list[FunctionalDependency]] = [
         get_topological_sorting(sub_g, g) for sub_g in scc_g.decompose(mode="weak")
@@ -247,29 +251,35 @@ def order_fds(g: ig.Graph, scc_g: ig.Graph) -> list[list[FunctionalDependency]]:
 
 
 def get_ordered_fds(
-    fds: list[FunctionalDependency],
+    fds: list[FunctionalDependency], dataset: str, output_path: Path
 ) -> list[list[FunctionalDependency]]:
-    logger.info("Computing ordered FDs for pipeline execution")
     global set_of_fds
-    set_of_fds = fds
+    global dataset_name
+    global output_dir
 
-    # Create output directory
-    if not output_dir.exists():
-        output_dir.mkdir()
-        logger.debug(f"Created output directory: {output_dir}")
+    set_of_fds = fds
+    dataset_name = dataset
+    output_dir = output_path
+
+    logger.info("Computing ordered FDs for pipeline execution")
+
+    start: float = time.time()
 
     # Build FD graph
-    g: ig.Graph = build_fd_graph()
+    g: Graph = build_fd_graph()
 
     # Turn FD graph into SCCG
-    scc_g: ig.Graph = find_strongly_connected_components(g)
+    scc_g: Graph = find_strongly_connected_components(g)
 
     # Perform topological sorting on SCCG and get order of functional dependencies
     logger.info("Performing topological sorting...")
     ordered_fds: list[list[FunctionalDependency]] = order_fds(g, scc_g)
-    
+
     logger.info(f"Computed traversal order with {len(ordered_fds)} groups")
     for i, fd_group in enumerate(ordered_fds):
         logger.debug(f"Group {i}: {len(fd_group)} FDs")
+
+    end: float = time.time()
+    logger.info(f"Completed ordering FDs in {(end - start):.2f}s")
 
     return ordered_fds
