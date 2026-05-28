@@ -17,6 +17,10 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import pandas as pd
 
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 output_dir: Path = Path("output")
 enable_plotting: bool = True
 
@@ -41,21 +45,29 @@ class FDGraph:
             fd_path: Path to the CSV file containing functional dependencies
                      (must have 'from' and 'to' columns with column names)
         """
+        logger.info(f"Initializing FDGraph with data: {data_path}, FDs: {fd_path}")
         self.data_path = data_path
         self.fd_path = fd_path
 
         # Load data
+        logger.debug(f"Loading data from {data_path}")
         self.df = pd.read_csv(data_path)
         self.columns = list(self.df.columns)
+        logger.info(f"Loaded data: {len(self.df)} rows, {len(self.columns)} columns")
 
         # Load functional dependencies
+        logger.debug(f"Loading FDs from {fd_path}")
         self.fd_df = pd.read_csv(fd_path)
+        logger.info(f"Loaded {len(self.fd_df)} functional dependencies")
 
         # Build the graph
+        logger.info("Building FDGraph...")
         self.graph = self._build_graph()
 
         # Calculate edge qualities
+        logger.info("Calculating edge qualities...")
         self.calculate_edge_qualities()
+        logger.info(f"FDGraph initialization completed. Graph has {self.graph.number_of_nodes()} nodes and {self.graph.number_of_edges()} edges")
 
     def _cell_node_id(self, col_name: str, value) -> str:
         """
@@ -88,6 +100,7 @@ class FDGraph:
         Returns:
             NetworkX DiGraph with column-value nodes and FD-based edges
         """
+        logger.debug("Starting graph construction")
         G = nx.DiGraph()
 
         # Get columns that appear in the functional dependencies
@@ -154,10 +167,12 @@ class FDGraph:
             )
 
         if enable_plotting:
+            logger.debug("Saving FD pattern graph visualization")
             nx.draw(G, with_labels=True, pos=nx.circular_layout(G))
             plt.savefig(str(output_dir / "fd_pattern_graph.png"))
             plt.clf()
 
+        logger.debug(f"Graph construction completed: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
         return G
 
     def calculate_edge_qualities(self):
@@ -247,6 +262,7 @@ class FDGraph:
         return self.graph
 
     def choose_best_next_edge(self, lhs: str, lval: str, rhs: str) -> tuple[str, str]:
+        logger.debug(f"Choosing best edge: {lhs}({lval}) -> {rhs}")
         current_node: str = self._cell_node_id(lhs, lval)
 
         successors: list[str] = [
@@ -266,20 +282,17 @@ class FDGraph:
 
         if best_edge is None:
             # No valid edge found for this FD
+            logger.error(f"No valid edge found from {current_node} to {rhs}")
             raise RuntimeError(f"No valid edge found from {current_node} to {rhs}.\n")
 
-        return self._parse_node_id(best_edge)
+        result = self._parse_node_id(best_edge)
+        logger.debug(f"Selected edge with quality {best_quality:.4f}: {result}")
+        return result
 
 
-def main():
-    """
-    Run FDGraph on a dataset folder.
-    
-    The folder should contain:
-    - clean.csv: The clean version of the data
-    - dirty.csv: The dirty version of the data
-    - fds.csv: The functional dependencies (with 'LHS' and 'RHS' columns)
-    """
+
+# example usage
+if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: python FDGraph.py <dataset_folder>")
         print("  dataset_folder: Path to folder containing clean.csv, dirty.csv, and fds.csv")
@@ -307,24 +320,10 @@ def main():
     print(f"  FDs: {fds_path}")
     print()
     
-    # Create FDGraph for clean data
-    print("Creating FDGraph for clean data...")
-    fd_graph_clean = FDGraph(str(clean_path), str(fds_path))
-    print(f"  Nodes: {fd_graph_clean.graph.number_of_nodes()}")
-    print(f"  Edges: {fd_graph_clean.graph.number_of_edges()}")
-    print()
-    
     # Create FDGraph for dirty data
     print("Creating FDGraph for dirty data...")
     fd_graph_dirty = FDGraph(str(dirty_path), str(fds_path))
     print(f"  Nodes: {fd_graph_dirty.graph.number_of_nodes()}")
     print(f"  Edges: {fd_graph_dirty.graph.number_of_edges()}")
     print()
-    
-    return fd_graph_clean, fd_graph_dirty
-
-
-# example usage
-if __name__ == "__main__":
-    main()
     
