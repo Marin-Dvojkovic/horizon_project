@@ -2,9 +2,10 @@ from .fd_pattern import FDPattern
 
 
 class PatternExpression:
-    _fd_patterns: list[FDPattern] = []
+    _fd_patterns: list[FDPattern]
 
     def __init__(self, tuple_index: int) -> None:
+        self._fd_patterns = []
         self._tuple_index: int = tuple_index
 
     @property

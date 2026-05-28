@@ -11,10 +11,15 @@ from collections import Counter
 from pathlib import Path
 from platform import node
 from typing import Optional
+import sys
 
 import matplotlib.pyplot as plt
 import networkx as nx
 import pandas as pd
+
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 output_dir: Path = Path("output")
 enable_plotting: bool = True
@@ -40,21 +45,29 @@ class FDGraph:
             fd_path: Path to the CSV file containing functional dependencies
                      (must have 'from' and 'to' columns with column names)
         """
+        logger.info(f"Initializing FDGraph with data: {data_path}, FDs: {fd_path}")
         self.data_path = data_path
         self.fd_path = fd_path
 
         # Load data
+        logger.debug(f"Loading data from {data_path}")
         self.df = pd.read_csv(data_path)
         self.columns = list(self.df.columns)
+        logger.info(f"Loaded data: {len(self.df)} rows, {len(self.columns)} columns")
 
         # Load functional dependencies
+        logger.debug(f"Loading FDs from {fd_path}")
         self.fd_df = pd.read_csv(fd_path)
+        logger.info(f"Loaded {len(self.fd_df)} functional dependencies")
 
         # Build the graph
+        logger.info("Building FDGraph...")
         self.graph = self._build_graph()
 
         # Calculate edge qualities
+        logger.info("Calculating edge qualities...")
         self.calculate_edge_qualities()
+        logger.info(f"FDGraph initialization completed. Graph has {self.graph.number_of_nodes()} nodes and {self.graph.number_of_edges()} edges")
 
     def _cell_node_id(self, col_name: str, value) -> str:
         """
@@ -87,13 +100,23 @@ class FDGraph:
         Returns:
             NetworkX DiGraph with column-value nodes and FD-based edges
         """
+        logger.debug("Starting graph construction")
         G = nx.DiGraph()
+
+        # Get columns that appear in the functional dependencies
+        fd_columns = set()
+        for _, fd in self.fd_df.iterrows():
+            fd_columns.add(fd[lhs_column_name])
+            fd_columns.add(fd[rhs_column_name])
 
         # Add nodes for unique (column, value) pairs
         # Using a set to avoid duplicate nodes
         seen_nodes = Counter()
         for row_idx in self.df.index:
             for col_name in self.columns:
+                # Only add nodes for columns that appear in the FDs
+                if col_name not in fd_columns:
+                    continue
                 value = self.df.loc[row_idx, col_name]
                 node_id = self._cell_node_id(col_name, value)
 
@@ -144,10 +167,12 @@ class FDGraph:
             )
 
         if enable_plotting:
+            logger.debug("Saving FD pattern graph visualization")
             nx.draw(G, with_labels=True, pos=nx.circular_layout(G))
             plt.savefig(str(output_dir / "fd_pattern_graph.png"))
             plt.clf()
 
+        logger.debug(f"Graph construction completed: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
         return G
 
     def calculate_edge_qualities(self):
@@ -236,139 +261,8 @@ class FDGraph:
         """Get full graph data type."""
         return self.graph
 
-    def get_dependent_cells(self, row_idx: int, col_name: str) -> list[tuple[int, str]]:
-        """
-        Get all cells in the same row that depend on the given cell via functional dependencies.
-
-        Args:
-            row_idx: Row index
-            col_name: Column name
-
-        Returns:
-            List of (row_idx, col_name) tuples for dependent cells
-        """
-        value = self.df.loc[row_idx, col_name]
-        source_node = self._cell_node_id(col_name, value)
-        dependents = []
-
-        for _, fd in self.fd_df.iterrows():
-            if fd[lhs_column_name] == col_name:
-                target_col = fd[rhs_column_name]
-                target_value = self.df.loc[row_idx, target_col]
-                target_node = self._cell_node_id(target_col, target_value)
-                if target_node in self.graph:
-                    dependents.append((row_idx, target_col))
-
-        return dependents
-
-    def get_cells_with_value(self, col_name: str, value) -> list[int]:
-        """
-        Get all row indices where the given column has the specified value.
-
-        Args:
-            col_name: Column name
-            value: Value to search for
-
-        Returns:
-            List of row indices
-        """
-        return self.df[self.df[col_name] == value].index.tolist()
-
-    def summary(self) -> dict:
-        """Get a summary of the graph."""
-        # Calculate average quality
-        qualities = [data["quality"] for _, _, data in self.graph.edges(data=True)]
-        avg_quality = sum(qualities) / len(qualities) if qualities else 0
-
-        return {
-            "num_rows": len(self.df),
-            "num_columns": len(self.columns),
-            "num_nodes": self.graph.number_of_nodes(),
-            "num_edges": self.graph.number_of_edges(),
-            "columns": self.columns,
-            "functional_dependencies": len(self.fd_df),
-            "average_edge_quality": avg_quality,
-        }
-
-    def traverse_best_quality_path(self, ordered_fds: list[tuple[str, str]]) -> dict:
-        """
-        Traverse the graph following ordered FDs, picking highest quality edges.
-
-        For each starting node in the first FD, follows the chain of FDs,
-        selecting the highest quality edge at each step.
-
-        Args:
-            ordered_fds: List of tuples (from_col, to_col) representing the FD chain to follow
-
-        Returns:
-            Dictionary with starting node as key and formatted path as value
-        """
-        if not ordered_fds:
-            return {}
-
-        results = {}
-
-        # Get the first FD to identify starting nodes
-        first_from_col, _ = ordered_fds[0]
-
-        # Find all unique starting nodes (nodes from the first column)
-        starting_nodes = set()
-        for node_id in self.graph.nodes():
-            col_name, _ = self._parse_node_id(node_id)
-            if col_name == first_from_col:
-                starting_nodes.add(node_id)
-        # print(starting_nodes)
-
-        # For each starting node, traverse the path
-        for start_node in starting_nodes:
-            path_steps = []
-            current_node = start_node
-
-            for fd_idx, (from_col, to_col) in enumerate(ordered_fds):
-                # Get all outgoing edges from current node
-                best_edge = None
-                best_quality = -1
-
-                for next_node in self.graph.successors(current_node):
-                    """
-                    # Check if this edge matches the current FD
-                    edge_data = self.graph[current_node][next_node]
-                    print(self.graph[current_node][next_node])
-                    edge_from_col = edge_data.get('fd_from')
-                    edge_to_col = edge_data.get('fd_to')
-                    """
-
-                    # if edge_from_col == from_col and edge_to_col == to_col:
-                    quality = self.graph[current_node][next_node]["quality"]
-                    if quality > best_quality:
-                        best_quality = quality
-                        best_edge = next_node
-
-                if best_edge is None:
-                    # No valid edge found for this FD
-                    print("no valid edge found\n")
-                    break
-
-                # Extract values from node IDs
-                _, from_value = self._parse_node_id(current_node)
-                _, to_value = self._parse_node_id(best_edge)
-
-                # Format the step
-                fd_name = f"FD: {from_col} > {to_col}"
-                step = f'({fd_name}, {{"{from_value}", "{to_value}"}})'
-                path_steps.append(step)
-
-                current_node = best_edge
-
-            # Format the complete path
-            if path_steps:
-                path_str = " -> ".join(path_steps)
-                _, start_value = self._parse_node_id(start_node)
-                results[start_node] = f"{start_value}: {path_str}"
-
-        return results
-
     def choose_best_next_edge(self, lhs: str, lval: str, rhs: str) -> tuple[str, str]:
+        logger.debug(f"Choosing best edge: {lhs}({lval}) -> {rhs}")
         current_node: str = self._cell_node_id(lhs, lval)
 
         successors: list[str] = [
@@ -388,73 +282,48 @@ class FDGraph:
 
         if best_edge is None:
             # No valid edge found for this FD
+            logger.error(f"No valid edge found from {current_node} to {rhs}")
             raise RuntimeError(f"No valid edge found from {current_node} to {rhs}.\n")
 
-        return self._parse_node_id(best_edge)
+        result = self._parse_node_id(best_edge)
+        logger.debug(f"Selected edge with quality {best_quality:.4f}: {result}")
+        return result
 
 
-# Example usage
+
+# example usage
 if __name__ == "__main__":
-    # Load the beers dataset
-    data_path = "../datasets/horizon_paper_test/dirty.csv"
-    fd_path = "../datasets/horizon_paper_test/fds.csv"
-
-    fd_graph = FDGraph(data_path, fd_path)
-
-    # Print summary
-    print("=== FDGraph Summary ===")
-    summary = fd_graph.summary()
-    for key, value in summary.items():
-        print(f"  {key}: {value}")
-
-    # Show some edge qualities
-    print(f"\n=== Sample Edge Qualities ===")
-    count = 0
-    for from_node, to_node, edge_data in fd_graph.graph.edges(data=True):
-        quality = edge_data.get("quality", "Not calculated")
-        support = edge_data.get("support", "N/A")
-        print(
-            f"  {from_node} -> {to_node}: quality={quality:.3f}, support={support:.3f}"
-        )
-        count += 1
-        if count >= 15:  # Show only first 5
-            break
-
-    # Example: Traverse best quality paths for ordered FDs
-    print(f"\n=== Best Quality Paths ===")
-    """ordered_fds = [("id","brewery_id"),("brewery_id","brewery-name")]"""
-    ordered_fds = [
-        ("provider_id", "provider_adress"),
-        ("provider_adress", "provider_area_id"),
-        ("provider_area_id", "service_area"),
-        ("service_area", "provider_area_id"),
-    ]
-    paths = fd_graph.traverse_best_quality_path(ordered_fds)
-    for node_id, path_str in list(paths.items())[:20]:  # Show first 5 paths
-        print(f"  {path_str}")
-
-    """
-    nodes = "DeptName"
-
-    # Example: Get node info for the (column, value) pair at row 0, column 'DeptName'
-    node_id = fd_graph.get_node_id(0, nodes)
-    print(f"\n=== Node Info for {nodes} (row 0) ===")
-    print(f"  Node ID: {node_id}")
-    print(f"  Info: {fd_graph.get_node_info(node_id)}")
-
-    cells = "ZipCode"
-
-    # Example: Get cells that depend on 'index' in row 0
-    print(f"\n=== Cells dependent on {cells} in row 0 ===")
-    dependents = fd_graph.get_dependent_cells(0, cells)
-    for row, col in dependents:
-        print(f"  r{row}_{col}: {fd_graph.get_cell_value(row, col)}")
-
-    determant = "ManagerID"
-
-    # Example: Get cells that determine 'brewery-name' in row 0
-    print(f"\n=== Cells determining {determant} in row 0 ===")
-    determinants = fd_graph.get_determinant_cells(0, determant)
-    for row, col in determinants:
-        print(f"  r{row}_{col}: {fd_graph.get_cell_value(row, col)}")
-    """
+    if len(sys.argv) < 2:
+        print("Usage: python FDGraph.py <dataset_folder>")
+        print("  dataset_folder: Path to folder containing clean.csv, dirty.csv, and fds.csv")
+        sys.exit(1)
+    
+    dataset_folder = Path(sys.argv[1])
+    
+    if not dataset_folder.exists():
+        print(f"Error: Dataset folder '{dataset_folder}' does not exist")
+        sys.exit(1)
+    
+    # Construct paths to the datasets
+    clean_path = dataset_folder / "clean.csv"
+    dirty_path = dataset_folder / "dirty.csv"
+    fds_path = dataset_folder / "fds.csv"
+    
+    # Check that all required files exist
+    for file_path, name in [(clean_path, "clean.csv"), (dirty_path, "dirty.csv"), (fds_path, "fds.csv")]:
+        if not file_path.exists():
+            print(f"Error: Required file '{name}' not found in '{dataset_folder}'")
+            sys.exit(1)
+    
+    print(f"Loading dataset from: {dataset_folder}")
+    print(f"  Data: {clean_path}")
+    print(f"  FDs: {fds_path}")
+    print()
+    
+    # Create FDGraph for dirty data
+    print("Creating FDGraph for dirty data...")
+    fd_graph_dirty = FDGraph(str(dirty_path), str(fds_path))
+    print(f"  Nodes: {fd_graph_dirty.graph.number_of_nodes()}")
+    print(f"  Edges: {fd_graph_dirty.graph.number_of_edges()}")
+    print()
+    

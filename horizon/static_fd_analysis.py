@@ -5,6 +5,9 @@ import igraph as ig
 import matplotlib.pyplot as plt
 from igraph import Graph
 from utils.fd import FunctionalDependency
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 output_dir: Path = Path("output")
 enable_plotting: bool = True
@@ -19,6 +22,7 @@ bound_attributes: set[str] = set()
 
 # Build FD graph
 def build_fd_graph() -> ig.Graph:
+    logger.info(f"Building FD graph from {len(set_of_fds)} functional dependencies")
     # Create iGraph from tuple list and visualize
     g: ig.Graph = ig.Graph.TupleList(
         [
@@ -31,6 +35,7 @@ def build_fd_graph() -> ig.Graph:
     )  # TODO: Support hyperedges
 
     if enable_plotting:
+        logger.debug("Saving FD graph visualization")
         plt.figure(figsize=(max(7, g.vcount() / 2), max(7, g.vcount() / 2)))
 
         ig.plot(
@@ -46,17 +51,19 @@ def build_fd_graph() -> ig.Graph:
         plt.savefig(str(output_dir / "fd_graph.png"))
         plt.clf()
 
-    print(f"FD graph has {g.vcount()} vertices and {g.ecount()} edges.")
-
+    logger.info(f"FD graph built: {g.vcount()} vertices and {g.ecount()} edges")
     return g
 
 
 # Find strongly connected components and build SCC graph
 def find_strongly_connected_components(g: ig.Graph) -> ig.Graph:
+    logger.info("Finding strongly connected components...")
     # Compute and visualize components
     components: ig.VertexClustering = ig.Graph.components(g)
+    logger.debug(f"Found {len(components)} components")
 
     if enable_plotting:
+        logger.debug("Saving component visualization")
         plt.figure(figsize=(max(7, g.vcount() / 2), max(7, g.vcount() / 2)))
 
         ig.plot(
@@ -72,6 +79,7 @@ def find_strongly_connected_components(g: ig.Graph) -> ig.Graph:
         plt.clf()
 
     # Build and visualize cluster graph (SCCG)
+    logger.info("Building SCC graph...")
     scc_g: ig.Graph = components.cluster_graph(
         combine_vertices={
             "name": lambda names: names,
@@ -80,6 +88,7 @@ def find_strongly_connected_components(g: ig.Graph) -> ig.Graph:
     )
 
     if enable_plotting:
+        logger.debug("Saving SCC graph visualization")
         plt.figure(figsize=(max(7, scc_g.vcount() / 2), max(7, scc_g.vcount() / 2)))
 
         ig.plot(
@@ -95,8 +104,7 @@ def find_strongly_connected_components(g: ig.Graph) -> ig.Graph:
         plt.savefig(str(output_dir / "scc_fd_graph.png"))
         plt.clf()
 
-    print(f"SCC graph has {scc_g.vcount()} components and {scc_g.ecount()} edges.")
-
+    logger.info(f"SCC graph built: {scc_g.vcount()} components and {scc_g.ecount()} edges")
     return scc_g
 
 
@@ -241,12 +249,14 @@ def order_fds(g: ig.Graph, scc_g: ig.Graph) -> list[list[FunctionalDependency]]:
 def get_ordered_fds(
     fds: list[FunctionalDependency],
 ) -> list[list[FunctionalDependency]]:
+    logger.info("Computing ordered FDs for pipeline execution")
     global set_of_fds
     set_of_fds = fds
 
     # Create output directory
-    if not output_dir.exists:
+    if not output_dir.exists():
         output_dir.mkdir()
+        logger.debug(f"Created output directory: {output_dir}")
 
     # Build FD graph
     g: ig.Graph = build_fd_graph()
@@ -255,8 +265,11 @@ def get_ordered_fds(
     scc_g: ig.Graph = find_strongly_connected_components(g)
 
     # Perform topological sorting on SCCG and get order of functional dependencies
+    logger.info("Performing topological sorting...")
     ordered_fds: list[list[FunctionalDependency]] = order_fds(g, scc_g)
-
-    print(f"Final traversal order: {ordered_fds}\n")
+    
+    logger.info(f"Computed traversal order with {len(ordered_fds)} groups")
+    for i, fd_group in enumerate(ordered_fds):
+        logger.debug(f"Group {i}: {len(fd_group)} FDs")
 
     return ordered_fds
