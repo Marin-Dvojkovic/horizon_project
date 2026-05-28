@@ -7,16 +7,14 @@ Each unique (column, value) pair becomes a node. This means:
 - Edges represent functional dependencies between column-value pairs
 """
 
+import sys
+import time
 from collections import Counter
 from pathlib import Path
-from platform import node
-from typing import Optional
-import sys
 
 import matplotlib.pyplot as plt
 import networkx as nx
 import pandas as pd
-
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -60,6 +58,8 @@ class FDGraph:
         self.fd_df = pd.read_csv(fd_path)
         logger.info(f"Loaded {len(self.fd_df)} functional dependencies")
 
+        start: float = time.time()
+
         # Build the graph
         logger.info("Building FDGraph...")
         self.graph = self._build_graph()
@@ -67,7 +67,11 @@ class FDGraph:
         # Calculate edge qualities
         logger.info("Calculating edge qualities...")
         self.calculate_edge_qualities()
-        logger.info(f"FDGraph initialization completed. Graph has {self.graph.number_of_nodes()} nodes and {self.graph.number_of_edges()} edges")
+
+        end: float = time.time()
+        logger.info(
+            f"FDGraph initialization completed in {(end - start):.2f}s. Graph has {self.graph.number_of_nodes()} nodes and {self.graph.number_of_edges()} edges"
+        )
 
     def _cell_node_id(self, col_name: str, value) -> str:
         """
@@ -172,7 +176,9 @@ class FDGraph:
             plt.savefig(str(output_dir / "fd_pattern_graph.png"))
             plt.clf()
 
-        logger.debug(f"Graph construction completed: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
+        logger.debug(
+            f"Graph construction completed: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges"
+        )
         return G
 
     def calculate_edge_qualities(self):
@@ -290,40 +296,44 @@ class FDGraph:
         return result
 
 
-
 # example usage
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: python FDGraph.py <dataset_folder>")
-        print("  dataset_folder: Path to folder containing clean.csv, dirty.csv, and fds.csv")
+        print(
+            "  dataset_folder: Path to folder containing clean.csv, dirty.csv, and fds.csv"
+        )
         sys.exit(1)
-    
+
     dataset_folder = Path(sys.argv[1])
-    
+
     if not dataset_folder.exists():
         print(f"Error: Dataset folder '{dataset_folder}' does not exist")
         sys.exit(1)
-    
+
     # Construct paths to the datasets
     clean_path = dataset_folder / "clean.csv"
     dirty_path = dataset_folder / "dirty.csv"
     fds_path = dataset_folder / "fds.csv"
-    
+
     # Check that all required files exist
-    for file_path, name in [(clean_path, "clean.csv"), (dirty_path, "dirty.csv"), (fds_path, "fds.csv")]:
+    for file_path, name in [
+        (clean_path, "clean.csv"),
+        (dirty_path, "dirty.csv"),
+        (fds_path, "fds.csv"),
+    ]:
         if not file_path.exists():
             print(f"Error: Required file '{name}' not found in '{dataset_folder}'")
             sys.exit(1)
-    
+
     print(f"Loading dataset from: {dataset_folder}")
     print(f"  Data: {clean_path}")
     print(f"  FDs: {fds_path}")
     print()
-    
+
     # Create FDGraph for dirty data
     print("Creating FDGraph for dirty data...")
     fd_graph_dirty = FDGraph(str(dirty_path), str(fds_path))
     print(f"  Nodes: {fd_graph_dirty.graph.number_of_nodes()}")
     print(f"  Edges: {fd_graph_dirty.graph.number_of_edges()}")
     print()
-    

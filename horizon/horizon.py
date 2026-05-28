@@ -1,26 +1,29 @@
+import logging
 import sys
 import time
 from pathlib import Path
 
-import pandas as pd
+import polars as pl
 import utils.loaders
 from FDGraph import FDGraph
 from static_fd_analysis import get_ordered_fds
 from utils.fd import FunctionalDependency
 from utils.fd_pattern import FDPattern
+from utils.logging_config import get_logger, setup_logging
 from utils.pattern_expression import PatternExpression
-from utils.logging_config import setup_logging, get_logger
-import logging
 
 # Setup logging
 logger = get_logger(__name__)
+
+# Output directory
+output_dir: Path = Path("output")
 
 # Variables for using different datasets
 lhs_column_name: str = "LHS"
 rhs_column_name: str = "RHS"
 
 
-def load_fds(fds_csv_path: Path):
+def load_fds(fds_csv_path: Path) -> list[FunctionalDependency]:
     logger.debug(f"Loading FDs from: {fds_csv_path}")
     # Check fds.csv path
     if not fds_csv_path.exists:
@@ -28,7 +31,7 @@ def load_fds(fds_csv_path: Path):
         raise ValueError(f"CSV file {str(fds_csv_path)} does not exist.")
 
     # Use CSV data loader to read input FDs from file
-    fds = utils.loaders.get_fds(
+    fds: list[FunctionalDependency] = utils.loaders.get_fds(
         fds_csv_path, utils.loaders.CSVFDLoader(lhs_column_name, rhs_column_name)
     )
     logger.info(f"Loaded {len(fds)} functional dependencies")
@@ -36,17 +39,19 @@ def load_fds(fds_csv_path: Path):
 
 
 def main(dataset_dir: Path) -> None:
-    logger.info(f"Starting Horizon pipeline with dataset: {dataset_dir}")
+    dataset_name: str = dataset_dir.name
+
+    logger.info(f"Starting Horizon pipeline with dataset {dataset_name}: {dataset_dir}")
+
     # Verify data path
     fds_path: Path = dataset_dir / "fds.csv"
     dirty_data_path = dataset_dir / "dirty.csv"
     clean_data_path = dataset_dir / "clean.csv"
-
     logger.debug(f"FD path: {fds_path}")
     logger.debug(f"Dirty data path: {dirty_data_path}")
     logger.debug(f"Clean data path: {clean_data_path}")
 
-    # Load data
+    # Load FDs
     logger.info("Loading functional dependencies...")
     set_of_fds: list[FunctionalDependency] = load_fds(fds_path)
 
@@ -56,29 +61,33 @@ def main(dataset_dir: Path) -> None:
 
     # Get traversal order
     logger.info("Computing traversal order for FDs...")
-    ordered_fds: list[list[FunctionalDependency]] = get_ordered_fds(set_of_fds)
+    ordered_fds: list[list[FunctionalDependency]] = get_ordered_fds(
+        set_of_fds, dataset_name, output_dir
+    )
 
     # Compute repairs for dirty data
     logger.info("Loading dirty data...")
-    dirty_data: pd.DataFrame = pd.read_csv(dirty_data_path)
-    logger.info(f"Loaded dirty data with {len(dirty_data)} tuples and {len(dirty_data.columns)} columns")
-    
+    dirty_data: pl.DataFrame = pl.read_csv(dirty_data_path)
+    logger.info(
+        f"Loaded dirty data with {len(dirty_data)} tuples and {len(dirty_data.columns)} columns"
+    )
+
     pattern_expressions: list[PatternExpression] = []
     repair_table: dict[FunctionalDependency, dict[str, str]] = {
         fd: {} for fd in set_of_fds
     }
 
     logger.info("Starting tuple repair process...")
-    start = time.time()
+    start: float = time.time()
     # Iterate over tuples and compute pattern expression for each
     for t in range(len(dirty_data)):
         p_exp: PatternExpression = PatternExpression(t)
         for i in range(len(ordered_fds)):
             for fd in ordered_fds[i]:
                 lval: str = str(
-                    dirty_data.at[t, fd.lhs[0]]
+                    dirty_data[t, fd.lhs[0]]
                 )  # TODO: Support multiple attributes on LHS
-                rval: str = str(dirty_data.at[t, fd.rhs])
+                rval: str = str(dirty_data[t, fd.rhs])
                 existing_pattern: FDPattern | None = p_exp.attribute_in_expression(
                     fd.rhs
                 )
@@ -87,48 +96,64 @@ def main(dataset_dir: Path) -> None:
                     rval = repair_table[fd][lval]
                     pattern: FDPattern = FDPattern(fd, lval, rval)
                     p_exp.add_fd_pattern(pattern)
-                    logger.debug(f"Tuple {t}: Applied cached repair for {fd} (LHS={lval} -> RHS={rval})")
+                    logger.debug(
+                        f"Tuple {t}: Applied cached repair for {fd} (LHS={lval} -> RHS={rval})"
+                    )
                 elif existing_pattern is not None:
                     # RHS attribute is part of a previous FD, therefore use the same RHS value
                     rval = existing_pattern.rval
                     pattern: FDPattern = FDPattern(fd, lval, rval)
                     p_exp.add_fd_pattern(pattern)
                     repair_table[fd][lval] = rval
-                    logger.debug(f"Tuple {t}: Applied existing pattern repair for {fd} (LHS={lval} -> RHS={rval})")
+                    logger.debug(
+                        f"Tuple {t}: Applied existing pattern repair for {fd} (LHS={lval} -> RHS={rval})"
+                    )
                 else:
                     # Choose best edge from FD pattern graph
                     rhs, rval = fd_graph.choose_best_next_edge(fd.lhs[0], lval, fd.rhs)
                     pattern: FDPattern = FDPattern(fd, lval, rval)
                     p_exp.add_fd_pattern(pattern)
                     repair_table[fd][lval] = rval
-                    logger.debug(f"Tuple {t}: Applied graph-based repair for {fd} (LHS={lval} -> RHS={rval})")
+                    logger.debug(
+                        f"Tuple {t}: Applied graph-based repair for {fd} (LHS={lval} -> RHS={rval})"
+                    )
 
                 # Apply repair in place
-                dirty_data.at[t, fd.rhs] = rval
+                dirty_data[t, fd.rhs] = rval
 
         pattern_expressions.append(p_exp)
         if (t + 1) % max(1, len(dirty_data) // 10) == 0:
             logger.info(f"Repaired {t + 1}/{len(dirty_data)} tuples")
 
-    end = time.time()
-    elapsed_time = end - start
+    end: float = time.time()
+    elapsed_time: float = end - start
 
     logger.info(f"Tuple repair process completed in {elapsed_time:.2f}s")
     logger.debug(f"Repair table:\n{repair_table}")
-    logger.info(f"Generated pattern expressions for {len(pattern_expressions)} tuples")
+
+    # Create output directory
+    if not output_dir.exists:
+        logger.info(f"Creating output directory under {output_dir}")
+    output_dir.mkdir(exist_ok=True)
 
     # Save cleaned data
-    output_path = Path("output/cleaned_data_result.csv")
-    output_path.parent.mkdir(exist_ok=True)
-    dirty_data.to_csv(output_path, index=False)
-    logger.info(f"Cleaned data saved to {output_path}")
+    data_output_path: Path = output_dir / f"{dataset_name}_cleaned_data.csv"
+    dirty_data.write_csv(data_output_path)
+    logger.info(f"Cleaned data saved to {data_output_path}")
     logger.info(f"Pipeline completed successfully. Total time: {elapsed_time:.2f}s")
+
+    # Save pattern expressions as lineage
+    exp_output_path: Path = output_dir / f"{dataset_name}_final_pattern_expressions.txt"
+    exp_file = open(exp_output_path, "w")
+    exp_file.writelines("\n".join(f"{str(p_exp)}" for p_exp in pattern_expressions))
+    exp_file.close()
+    logger.info(f"Final pattern expressions saved to {exp_output_path}")
 
 
 if __name__ == "__main__":
     # Setup logging
     setup_logging(log_level=logging.DEBUG)
-    
+
     # Parse arguments
     if len(sys.argv) != 2:
         print("Usage: python horizon.py <dataset_dir>")
