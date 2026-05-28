@@ -1,174 +1,262 @@
 import sys
 from pathlib import Path
 
+import igraph as ig
 import matplotlib.pyplot as plt
-import networkx as nx
-import pandas as pd
-import utils.loaders
+from igraph import Graph
 from utils.fd import FunctionalDependency
 
-# Variables for using different datasets
-lhs_column_name: str = "from"
-rhs_column_name: str = "to"
-
 output_dir: Path = Path("output")
+enable_plotting: bool = True
+
+# Use matplotlib as backend for igraph
+ig.config["plotting.backend"] = "matplotlib"
 
 # Global variables for storing FDs
 set_of_fds: list[FunctionalDependency] = []
 bound_attributes: set[str] = set()
 
 
-def determine_boundedness(fds: list[FunctionalDependency]) -> None:
-    global bound_attributes
+# Build FD graph
+def build_fd_graph() -> ig.Graph:
+    # Create iGraph from tuple list and visualize
+    g: ig.Graph = ig.Graph.TupleList(
+        [
+            (*fd.as_tuple(), i)
+            for i, fd in enumerate(set_of_fds)
+            if "," not in fd.as_tuple()[0]
+        ],
+        directed=True,
+        edge_attrs="fd_index",
+    )  # TODO: Support hyperedges
 
-    attribute_fd_mapping: dict[str, list[tuple[str, str]]] = {}
-    free_attributes: set[str] = set()
-    fds_to_check: list[tuple[str, str]] = []
+    if enable_plotting:
+        plt.figure(figsize=(max(7, g.vcount() / 2), max(7, g.vcount() / 2)))
 
-    # TODO: Deal with multiple attributes on LHS correctly
-    # Iterate over all FDs
-    for fd in fds:
-        rhs: str = fd.rhs
-        if rhs not in attribute_fd_mapping:
-            attribute_fd_mapping[rhs] = []
+        ig.plot(
+            g,
+            layout="tree",
+            vertex_color="green",
+            vertex_label=g.vs["name"],
+            vertex_label_dist=1.5,
+            edge_label=g.es["fd_index"],
+        )
 
-        # Always add RHS attributes to free attributes
-        free_attributes.add(rhs)
-        if rhs in bound_attributes:
-            bound_attributes.remove(rhs)
+        plt.gca().invert_yaxis()  # Plot tree with root at top
+        plt.savefig(str(output_dir / "fd_graph.png"))
+        plt.clf()
 
-        # For all LHS attributes
-        for lhs in fd.lhs:
-            # Collect all FDs that point to the respective attribute
-            if lhs not in attribute_fd_mapping:
-                attribute_fd_mapping[lhs] = []
-            attribute_fd_mapping[rhs].append((lhs, rhs))
+    print(f"FD graph has {g.vcount()} vertices and {g.ecount()} edges.")
 
-            # If LHS not in free attributes: Add LHS attribute to bound attributes
-            if lhs not in free_attributes:
-                bound_attributes.add(lhs)
-                continue
-
-            # If LHS in free attributes:
-            # If there is no cycle LHS <-> RHS, LHS stays free
-            if (rhs, lhs) not in attribute_fd_mapping[lhs]:
-                continue
-            # If there is a cycle LHS <-> RHS, but another attribute A bounds one of the attributes (A -> LHS or A -> RHS), LHS stays free
-            if len(attribute_fd_mapping[lhs]) > 1 or len(attribute_fd_mapping[rhs]) > 1:
-                continue
-            # Else we don't know yet and have to check at the end
-            fds_to_check.append((lhs, rhs))
-
-    # Check unprocessed cycles LHS <-> RHS, if A with A -> LHS or A -> RHS appeared, both LHS and RHS stay free
-    for lhs, rhs in fds_to_check:
-        # Add LHS to bound attributes, if there is no other attribute A
-        if len(attribute_fd_mapping[lhs]) == 1 and len(attribute_fd_mapping[rhs]) == 1:
-            free_attributes.remove(lhs)
-            bound_attributes.add(lhs)
-
-    print(f"Found {len(bound_attributes)} bound attribute(s): {bound_attributes}.")
+    return g
 
 
-# Build FD graph from pandas df
-def build_fd_graph(fds: pd.DataFrame) -> nx.DiGraph:
-    # NOTE: Ignores multiple LHS attributes for now
-    fds_simple: pd.DataFrame = fds[
-        ~fds[lhs_column_name].str.contains(",")
-    ]  # TODO: Support hyperedges
+# Find strongly connected components and build SCC graph
+def find_strongly_connected_components(g: ig.Graph) -> ig.Graph:
+    # Compute and visualize components
+    components: ig.VertexClustering = ig.Graph.components(g)
 
-    # Create graph from pandas df
-    G: nx.DiGraph = nx.from_pandas_edgelist(
-        df=fds_simple,
-        source=lhs_column_name,
-        target=rhs_column_name,
-        create_using=nx.DiGraph(),
+    if enable_plotting:
+        plt.figure(figsize=(max(7, g.vcount() / 2), max(7, g.vcount() / 2)))
+
+        ig.plot(
+            components,
+            layout="tree",
+            palette=ig.RainbowPalette(),
+            vertex_label=g.vs["name"],
+            vertex_label_dist=1.5,
+        )
+
+        plt.gca().invert_yaxis()  # Plot tree with root at top
+        plt.savefig(str(output_dir / "fd_graph_components.png"))
+        plt.clf()
+
+    # Build and visualize cluster graph (SCCG)
+    scc_g: ig.Graph = components.cluster_graph(
+        combine_vertices={
+            "name": lambda names: names,
+        },
+        combine_edges={"fd_index": lambda fd_indices: fd_indices},
     )
 
-    print(f"FD graph has {G.number_of_nodes()} nodes and {G.number_of_edges()} edges.")
+    if enable_plotting:
+        plt.figure(figsize=(max(7, scc_g.vcount() / 2), max(7, scc_g.vcount() / 2)))
 
-    # Save figure as .png
-    nx.draw(G, with_labels=True, pos=nx.circular_layout(G))
-    plt.savefig(output_dir / "fd_graph.png")
-    plt.clf()
+        ig.plot(
+            scc_g,
+            layout="tree",
+            vertex_color="green",
+            vertex_label=scc_g.vs["name"],
+            vertex_label_dist=1.5,
+            edge_label=scc_g.es["fd_index"],
+        )
 
-    return G
+        plt.gca().invert_yaxis()  # Plot tree with root at top
+        plt.savefig(str(output_dir / "scc_fd_graph.png"))
+        plt.clf()
 
+    print(f"SCC graph has {scc_g.vcount()} components and {scc_g.ecount()} edges.")
 
-def find_strongly_connected_components(G) -> tuple[nx.DiGraph, dict]:
-    # Build condensation graph (SCCG)
-    SCCG: nx.DiGraph = nx.condensation(
-        G
-    )  # Builds SCCG with nx.strongly_connected_components(G)
-    member_mapping: dict = {
-        node_data[0]: node_data[1]["members"] for node_data in SCCG.nodes.data()
-    }
-
-    print(
-        f"SCC graph has {SCCG.number_of_nodes()} components and {SCCG.number_of_edges()} edges."
-    )
-
-    # Save figure as .png
-    nx.draw(
-        SCCG,
-        with_labels=True,
-        labels=member_mapping,
-        pos=nx.circular_layout(SCCG),
-    )
-    plt.savefig(output_dir / "scc_fd_graph.png")
-    plt.clf()
-
-    return SCCG, member_mapping
+    return scc_g
 
 
-def get_topological_sorting(SCCG: nx.DiGraph, member_mapping: dict) -> list[str]:
-    # Perform topological sorting of SCCG
-    topological_sorting: list[str] = []
-    for sccg_node in nx.topological_sort(SCCG):
-        for attribute in member_mapping[sccg_node]:
-            topological_sorting.append(attribute)
+# Implements Hierholzer's linear time algorithm for constructing an Eulerian cycle/tour
+def order_subg(sub_g: ig.Graph) -> list[FunctionalDependency]:
+    sub_order: list[FunctionalDependency] = []
 
-    return topological_sorting
+    # Graph attributes
+    n: int = sub_g.vcount()
+    in_degrees: list[int] = [sub_g.indegree(i) for i in range(n)]
+    out_degrees: list[int] = [sub_g.outdegree(i) for i in range(n)]
+
+    # Check requirements for Eulerian cycle/tour
+    uneven_vertices: list[int] = [
+        i for i in range(n) if out_degrees[i] != in_degrees[i]
+    ]
+    if len(uneven_vertices) not in [0, 2]:
+        raise RuntimeError(
+            "Not possible to find a Eulerian cycle/tour and therefore not possible to order FDs."
+        )
+
+    # Pick start vertex
+    start_v: int | None = 0
+
+    if len(uneven_vertices) == 2:
+        # Check requirements for Eulerian tour
+        start_v = next(
+            (i for i in uneven_vertices if out_degrees[i] == in_degrees[i] + 1), None
+        )
+        end_v: int | None = next(
+            (i for i in uneven_vertices if in_degrees[i] == out_degrees[i] + 1), None
+        )
+        if start_v is None or end_v is None:
+            raise RuntimeError(
+                "Not possible to find a Eulerian tour and therrefore not possible to order FDs."
+            )
+        # Add artificial edge from end to start, in order to compute Eulerian cycle
+        sub_g.add_edge(end_v, start_v)
+        out_degrees[end_v] += 1
+        in_degrees[start_v] += 1
+
+    traversed_edge_count: list[int] = [0 for i in range(n)]
+    visited: list[bool] = [True if i == start_v else False for i in range(n)]
+    skipped: list[bool] = [False for i in range(n)]
+    predecessor: list[int] = [0 for i in range(n)]
+
+    c = 0
+    lhs_v: int = start_v
+
+    while c < sub_g.ecount():
+        traversed_edge_count[lhs_v] += 1
+        i: int = traversed_edge_count[lhs_v]
+
+        # Reverse traversal of vertices (follow incoming edges from lhs_v)
+        if i <= in_degrees[lhs_v]:
+            rhs_v: int = sub_g.neighbors(lhs_v, mode="in")[i - 1]
+            if not visited[rhs_v]:
+                if rhs_v != start_v:
+                    # Mark predecessor when reached for the first time
+                    predecessor[rhs_v] = lhs_v
+                visited[rhs_v] = True
+            lhs_v = rhs_v
+            continue
+
+        # Start backtracking (follow outgoing edges from lhs_v)
+        i = traversed_edge_count[lhs_v] - in_degrees[lhs_v]
+        rhs_v: int = predecessor[lhs_v]
+
+        # Skip edge
+        if (
+            i <= out_degrees[lhs_v]
+            and sub_g.neighbors(lhs_v, mode="out")[i - 1] == rhs_v
+            and not skipped[lhs_v]
+        ):
+            skipped[lhs_v] = True
+            traversed_edge_count[lhs_v] += 1
+            i += 1
+
+        if i <= out_degrees[lhs_v]:
+            rhs_v = sub_g.neighbors(lhs_v, mode="out")[i - 1]
+
+        # Write traversed edge to sub-order
+        sub_order.append(sub_g.es.find(_source=lhs_v, _target=rhs_v)["fd_index"])
+        c += 1
+        lhs_v = rhs_v
+
+    # Get FDs and eliminate artificial edge
+    return [set_of_fds[fd_index] for fd_index in sub_order if fd_index is not None]
 
 
-def order_fds(topological_sorting: list[str]) -> list[str]:
-    # TODO: Proper order representation, for each bound attribute
-    # Pseudocode from the paper:
-    ## for i <- 0 to |Ordered_FDs| do
-    ### forall FD f in Ordered_FDs[i] do
+# Implements Kahn's Algorithm for computing a topological sorting using BFS
+def get_topological_sorting(
+    component_g: ig.Graph, original_g: ig.Graph
+) -> list[FunctionalDependency]:
+    ordered_fds: list[FunctionalDependency] = []
 
-    return topological_sorting
+    # Start with vertices of graph with in-degree 0
+    vertices: list[ig.Vertex] = [v for v in component_g.vs.select(_indegree_eq=0)]
+
+    while vertices:
+        component_v = vertices.pop(0)
+
+        # If component contains more than 1 vertex
+        if len(component_v["name"]) > 1:
+            # Compute order of this component via Eulerian tour of subgraph
+            sub_g = original_g.induced_subgraph(
+                original_g.vs.select(name_in=component_v["name"]),
+                implementation="create_from_scratch",
+            )
+            ordered_fds += order_subg(sub_g)
+
+        # Iterate over neighbors
+        for next_vertex in component_g.neighbors(component_v, mode="out"):
+            # Add edge information to ordering and delete it
+            edge: ig.Edge = component_g.es.find(
+                _source=component_v, _target=next_vertex
+            )
+            ordered_fds += [set_of_fds[fd_index] for fd_index in edge["fd_index"]]
+            component_g.delete_edges(edge)
+            # If neighboring vertex now has in-degree 0, add it to vertices queue
+            if component_g.indegree(next_vertex) == 0:
+                vertices.append(component_g.vs[next_vertex])
+
+    return ordered_fds
 
 
-def get_ordered_fds(fds_csv_path: Path) -> list[str]:
+def order_fds(g: ig.Graph, scc_g: ig.Graph) -> list[list[FunctionalDependency]]:
+    # Perform topological sorting of each sub-component of SCCG
+    ordered_fds: list[list[FunctionalDependency]] = [
+        get_topological_sorting(sub_g, g) for sub_g in scc_g.decompose(mode="weak")
+    ]
+
+    # TODO: Uncomment if multiple attributes on LHS supported in FDs
+    # if sum([len(order) for order in ordered_fds]) != len(set_of_fds):
+    #     raise RuntimeError(
+    #         f"Ordered FDs have length {sum([len(order) for order in ordered_fds])} while therer are {len(set_of_fds)} FDs."
+    #     )
+
+    return ordered_fds
+
+
+def get_ordered_fds(
+    fds: list[FunctionalDependency],
+) -> list[list[FunctionalDependency]]:
     global set_of_fds
-
-    # Check fds.csv path
-    if not fds_csv_path.exists():
-        raise ValueError(f"CSV file {str(fds_csv_path)} does not exist.")
+    set_of_fds = fds
 
     # Create output directory
     if not output_dir.exists():
         output_dir.mkdir()
 
-    # Use CSV data loader to read input FDs from file
-    set_of_fds = utils.loaders.get_fds(
-        fds_csv_path, utils.loaders.CSVFDLoader(lhs_column_name, rhs_column_name)
-    )
-
-    # Determine attribute boundedness
-    determine_boundedness(set_of_fds)
-
     # Build FD graph
-    G: nx.DiGraph = build_fd_graph(pd.read_csv(fds_csv_path))
+    g: ig.Graph = build_fd_graph()
 
     # Turn FD graph into SCCG
-    SCCG, member_mapping = find_strongly_connected_components(G)
+    scc_g: ig.Graph = find_strongly_connected_components(g)
 
-    # Perform topological sorting on SCCG
-    topological_sorting: list[str] = get_topological_sorting(SCCG, member_mapping)
+    # Perform topological sorting on SCCG and get order of functional dependencies
+    ordered_fds: list[list[FunctionalDependency]] = order_fds(g, scc_g)
 
-    # Order functional dependencies
-    order: list[str] = order_fds(topological_sorting)
-    print(f"Final traversal order: {order}")
+    print(f"Final traversal order: {ordered_fds}\n")
 
-    return order
+    return ordered_fds

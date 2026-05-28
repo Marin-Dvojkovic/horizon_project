@@ -12,7 +12,8 @@ dependencies = [
     "jupyterlab>=4.0",
     "ipykernel>=6.0",
     "networkx>=3.4.2",
-    "matplotlib>=3.10.9"
+    "matplotlib>=3.10.9",
+    "igraph>=1.0.0"
 ]
 
 [tool.uv]

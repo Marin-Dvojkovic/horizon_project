@@ -19,10 +19,15 @@ class FunctionalDependency:
         return f"FD({lhs_str} -> {self._rhs})"
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, FunctionalDependency):
+        if isinstance(other, tuple) and isinstance(other[0], tuple):
+            return self._lhs == other[0] and self._rhs == other[1]
+        elif not isinstance(other, FunctionalDependency):
             return NotImplemented
         return self._lhs == other._lhs and self._rhs == other._rhs
 
     # required by __eq__; allows use in sets and as dict keys (e.g. fd in seen_fds)
     def __hash__(self) -> int:
         return hash((self._lhs, self._rhs))
+
+    def as_tuple(self) -> tuple:
+        return (", ".join(self._lhs), self.rhs)
