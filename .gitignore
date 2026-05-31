@@ -51,3 +51,6 @@ output/
 
 # Datasets
 datasets/
+
+# BART change logs (large; regenerate injected/ from them, keep docs + egtasks)
+bart/*_changes.csv

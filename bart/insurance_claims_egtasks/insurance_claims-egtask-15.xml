@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<task>
+    <target>
+        <type>DBMS</type>
+        <access-configuration>
+            <driver>org.postgresql.Driver</driver>
+            <uri>jdbc:postgresql:bart_insurance_claims</uri>
+            <schema>target</schema>
+            <login>pguser</login>
+            <password>pguser</password>
+        </access-configuration>
+        <import createTables="true">
+            <input type="csv" separator="," table="insurance_claims">C:/Users/dvojk/repositories/BART-master/examples/insurance_claims/insurance_claims.csv</input>
+        </import>
+    </target>
+
+    <dependencies>
+<![CDATA[
+DCs:
+
+// FD1: model -> engine_type
+e1: insurance_claims(policy_id: $policy_id1, subscription_length: $subscription_length1, vehicle_age: $vehicle_age1, customer_age: $customer_age1, region_code: $region_code1, region_density: $region_density1, segment: $segment1, model: $model1, fuel_type: $fuel_type1, max_torque: $max_torque1, max_power: $max_power1, engine_type: $engine_type1, airbags: $airbags1, is_esc: $is_esc1, is_adjustable_steering: $is_adjustable_steering1, is_tpms: $is_tpms1, is_parking_sensors: $is_parking_sensors1, is_parking_camera: $is_parking_camera1, rear_brakes_type: $rear_brakes_type1, displacement: $displacement1, cylinder: $cylinder1, transmission_type: $transmission_type1, steering_type: $steering_type1, turning_radius: $turning_radius1, length: $length1, width: $width1, gross_weight: $gross_weight1, is_front_fog_lights: $is_front_fog_lights1, is_rear_window_wiper: $is_rear_window_wiper1, is_rear_window_washer: $is_rear_window_washer1, is_rear_window_defogger: $is_rear_window_defogger1, is_brake_assist: $is_brake_assist1, is_power_door_locks: $is_power_door_locks1, is_central_locking: $is_central_locking1, is_power_steering: $is_power_steering1, is_driver_seat_height_adjustable: $is_driver_seat_height_adjustable1, is_day_night_rear_view_mirror: $is_day_night_rear_view_mirror1, is_ecw: $is_ecw1, is_speed_alert: $is_speed_alert1, ncap_rating: $ncap_rating1, claim_status: $claim_status1),
+    insurance_claims(policy_id: $policy_id2, subscription_length: $subscription_length2, vehicle_age: $vehicle_age2, customer_age: $customer_age2, region_code: $region_code2, region_density: $region_density2, segment: $segment2, model: $model2, fuel_type: $fuel_type2, max_torque: $max_torque2, max_power: $max_power2, engine_type: $engine_type2, airbags: $airbags2, is_esc: $is_esc2, is_adjustable_steering: $is_adjustable_steering2, is_tpms: $is_tpms2, is_parking_sensors: $is_parking_sensors2, is_parking_camera: $is_parking_camera2, rear_brakes_type: $rear_brakes_type2, displacement: $displacement2, cylinder: $cylinder2, transmission_type: $transmission_type2, steering_type: $steering_type2, turning_radius: $turning_radius2, length: $length2, width: $width2, gross_weight: $gross_weight2, is_front_fog_lights: $is_front_fog_lights2, is_rear_window_wiper: $is_rear_window_wiper2, is_rear_window_washer: $is_rear_window_washer2, is_rear_window_defogger: $is_rear_window_defogger2, is_brake_assist: $is_brake_assist2, is_power_door_locks: $is_power_door_locks2, is_central_locking: $is_central_locking2, is_power_steering: $is_power_steering2, is_driver_seat_height_adjustable: $is_driver_seat_height_adjustable2, is_day_night_rear_view_mirror: $is_day_night_rear_view_mirror2, is_ecw: $is_ecw2, is_speed_alert: $is_speed_alert2, ncap_rating: $ncap_rating2, claim_status: $claim_status2),
+    $model1 == $model2, $engine_type1 != $engine_type2 -> #fail.
+
+// FD2: model -> airbags
+e2: insurance_claims(policy_id: $policy_id1, subscription_length: $subscription_length1, vehicle_age: $vehicle_age1, customer_age: $customer_age1, region_code: $region_code1, region_density: $region_density1, segment: $segment1, model: $model1, fuel_type: $fuel_type1, max_torque: $max_torque1, max_power: $max_power1, engine_type: $engine_type1, airbags: $airbags1, is_esc: $is_esc1, is_adjustable_steering: $is_adjustable_steering1, is_tpms: $is_tpms1, is_parking_sensors: $is_parking_sensors1, is_parking_camera: $is_parking_camera1, rear_brakes_type: $rear_brakes_type1, displacement: $displacement1, cylinder: $cylinder1, transmission_type: $transmission_type1, steering_type: $steering_type1, turning_radius: $turning_radius1, length: $length1, width: $width1, gross_weight: $gross_weight1, is_front_fog_lights: $is_front_fog_lights1, is_rear_window_wiper: $is_rear_window_wiper1, is_rear_window_washer: $is_rear_window_washer1, is_rear_window_defogger: $is_rear_window_defogger1, is_brake_assist: $is_brake_assist1, is_power_door_locks: $is_power_door_locks1, is_central_locking: $is_central_locking1, is_power_steering: $is_power_steering1, is_driver_seat_height_adjustable: $is_driver_seat_height_adjustable1, is_day_night_rear_view_mirror: $is_day_night_rear_view_mirror1, is_ecw: $is_ecw1, is_speed_alert: $is_speed_alert1, ncap_rating: $ncap_rating1, claim_status: $claim_status1),
+    insurance_claims(policy_id: $policy_id2, subscription_length: $subscription_length2, vehicle_age: $vehicle_age2, customer_age: $customer_age2, region_code: $region_code2, region_density: $region_density2, segment: $segment2, model: $model2, fuel_type: $fuel_type2, max_torque: $max_torque2, max_power: $max_power2, engine_type: $engine_type2, airbags: $airbags2, is_esc: $is_esc2, is_adjustable_steering: $is_adjustable_steering2, is_tpms: $is_tpms2, is_parking_sensors: $is_parking_sensors2, is_parking_camera: $is_parking_camera2, rear_brakes_type: $rear_brakes_type2, displacement: $displacement2, cylinder: $cylinder2, transmission_type: $transmission_type2, steering_type: $steering_type2, turning_radius: $turning_radius2, length: $length2, width: $width2, gross_weight: $gross_weight2, is_front_fog_lights: $is_front_fog_lights2, is_rear_window_wiper: $is_rear_window_wiper2, is_rear_window_washer: $is_rear_window_washer2, is_rear_window_defogger: $is_rear_window_defogger2, is_brake_assist: $is_brake_assist2, is_power_door_locks: $is_power_door_locks2, is_central_locking: $is_central_locking2, is_power_steering: $is_power_steering2, is_driver_seat_height_adjustable: $is_driver_seat_height_adjustable2, is_day_night_rear_view_mirror: $is_day_night_rear_view_mirror2, is_ecw: $is_ecw2, is_speed_alert: $is_speed_alert2, ncap_rating: $ncap_rating2, claim_status: $claim_status2),
+    $model1 == $model2, $airbags1 != $airbags2 -> #fail.
+
+// FD3: model -> width
+e3: insurance_claims(policy_id: $policy_id1, subscription_length: $subscription_length1, vehicle_age: $vehicle_age1, customer_age: $customer_age1, region_code: $region_code1, region_density: $region_density1, segment: $segment1, model: $model1, fuel_type: $fuel_type1, max_torque: $max_torque1, max_power: $max_power1, engine_type: $engine_type1, airbags: $airbags1, is_esc: $is_esc1, is_adjustable_steering: $is_adjustable_steering1, is_tpms: $is_tpms1, is_parking_sensors: $is_parking_sensors1, is_parking_camera: $is_parking_camera1, rear_brakes_type: $rear_brakes_type1, displacement: $displacement1, cylinder: $cylinder1, transmission_type: $transmission_type1, steering_type: $steering_type1, turning_radius: $turning_radius1, length: $length1, width: $width1, gross_weight: $gross_weight1, is_front_fog_lights: $is_front_fog_lights1, is_rear_window_wiper: $is_rear_window_wiper1, is_rear_window_washer: $is_rear_window_washer1, is_rear_window_defogger: $is_rear_window_defogger1, is_brake_assist: $is_brake_assist1, is_power_door_locks: $is_power_door_locks1, is_central_locking: $is_central_locking1, is_power_steering: $is_power_steering1, is_driver_seat_height_adjustable: $is_driver_seat_height_adjustable1, is_day_night_rear_view_mirror: $is_day_night_rear_view_mirror1, is_ecw: $is_ecw1, is_speed_alert: $is_speed_alert1, ncap_rating: $ncap_rating1, claim_status: $claim_status1),
+    insurance_claims(policy_id: $policy_id2, subscription_length: $subscription_length2, vehicle_age: $vehicle_age2, customer_age: $customer_age2, region_code: $region_code2, region_density: $region_density2, segment: $segment2, model: $model2, fuel_type: $fuel_type2, max_torque: $max_torque2, max_power: $max_power2, engine_type: $engine_type2, airbags: $airbags2, is_esc: $is_esc2, is_adjustable_steering: $is_adjustable_steering2, is_tpms: $is_tpms2, is_parking_sensors: $is_parking_sensors2, is_parking_camera: $is_parking_camera2, rear_brakes_type: $rear_brakes_type2, displacement: $displacement2, cylinder: $cylinder2, transmission_type: $transmission_type2, steering_type: $steering_type2, turning_radius: $turning_radius2, length: $length2, width: $width2, gross_weight: $gross_weight2, is_front_fog_lights: $is_front_fog_lights2, is_rear_window_wiper: $is_rear_window_wiper2, is_rear_window_washer: $is_rear_window_washer2, is_rear_window_defogger: $is_rear_window_defogger2, is_brake_assist: $is_brake_assist2, is_power_door_locks: $is_power_door_locks2, is_central_locking: $is_central_locking2, is_power_steering: $is_power_steering2, is_driver_seat_height_adjustable: $is_driver_seat_height_adjustable2, is_day_night_rear_view_mirror: $is_day_night_rear_view_mirror2, is_ecw: $is_ecw2, is_speed_alert: $is_speed_alert2, ncap_rating: $ncap_rating2, claim_status: $claim_status2),
+    $model1 == $model2, $width1 != $width2 -> #fail.
+
+// FD4: model -> length
+e4: insurance_claims(policy_id: $policy_id1, subscription_length: $subscription_length1, vehicle_age: $vehicle_age1, customer_age: $customer_age1, region_code: $region_code1, region_density: $region_density1, segment: $segment1, model: $model1, fuel_type: $fuel_type1, max_torque: $max_torque1, max_power: $max_power1, engine_type: $engine_type1, airbags: $airbags1, is_esc: $is_esc1, is_adjustable_steering: $is_adjustable_steering1, is_tpms: $is_tpms1, is_parking_sensors: $is_parking_sensors1, is_parking_camera: $is_parking_camera1, rear_brakes_type: $rear_brakes_type1, displacement: $displacement1, cylinder: $cylinder1, transmission_type: $transmission_type1, steering_type: $steering_type1, turning_radius: $turning_radius1, length: $length1, width: $width1, gross_weight: $gross_weight1, is_front_fog_lights: $is_front_fog_lights1, is_rear_window_wiper: $is_rear_window_wiper1, is_rear_window_washer: $is_rear_window_washer1, is_rear_window_defogger: $is_rear_window_defogger1, is_brake_assist: $is_brake_assist1, is_power_door_locks: $is_power_door_locks1, is_central_locking: $is_central_locking1, is_power_steering: $is_power_steering1, is_driver_seat_height_adjustable: $is_driver_seat_height_adjustable1, is_day_night_rear_view_mirror: $is_day_night_rear_view_mirror1, is_ecw: $is_ecw1, is_speed_alert: $is_speed_alert1, ncap_rating: $ncap_rating1, claim_status: $claim_status1),
+    insurance_claims(policy_id: $policy_id2, subscription_length: $subscription_length2, vehicle_age: $vehicle_age2, customer_age: $customer_age2, region_code: $region_code2, region_density: $region_density2, segment: $segment2, model: $model2, fuel_type: $fuel_type2, max_torque: $max_torque2, max_power: $max_power2, engine_type: $engine_type2, airbags: $airbags2, is_esc: $is_esc2, is_adjustable_steering: $is_adjustable_steering2, is_tpms: $is_tpms2, is_parking_sensors: $is_parking_sensors2, is_parking_camera: $is_parking_camera2, rear_brakes_type: $rear_brakes_type2, displacement: $displacement2, cylinder: $cylinder2, transmission_type: $transmission_type2, steering_type: $steering_type2, turning_radius: $turning_radius2, length: $length2, width: $width2, gross_weight: $gross_weight2, is_front_fog_lights: $is_front_fog_lights2, is_rear_window_wiper: $is_rear_window_wiper2, is_rear_window_washer: $is_rear_window_washer2, is_rear_window_defogger: $is_rear_window_defogger2, is_brake_assist: $is_brake_assist2, is_power_door_locks: $is_power_door_locks2, is_central_locking: $is_central_locking2, is_power_steering: $is_power_steering2, is_driver_seat_height_adjustable: $is_driver_seat_height_adjustable2, is_day_night_rear_view_mirror: $is_day_night_rear_view_mirror2, is_ecw: $is_ecw2, is_speed_alert: $is_speed_alert2, ncap_rating: $ncap_rating2, claim_status: $claim_status2),
+    $model1 == $model2, $length1 != $length2 -> #fail.
+
+// FD5: model -> is_power_steering
+e5: insurance_claims(policy_id: $policy_id1, subscription_length: $subscription_length1, vehicle_age: $vehicle_age1, customer_age: $customer_age1, region_code: $region_code1, region_density: $region_density1, segment: $segment1, model: $model1, fuel_type: $fuel_type1, max_torque: $max_torque1, max_power: $max_power1, engine_type: $engine_type1, airbags: $airbags1, is_esc: $is_esc1, is_adjustable_steering: $is_adjustable_steering1, is_tpms: $is_tpms1, is_parking_sensors: $is_parking_sensors1, is_parking_camera: $is_parking_camera1, rear_brakes_type: $rear_brakes_type1, displacement: $displacement1, cylinder: $cylinder1, transmission_type: $transmission_type1, steering_type: $steering_type1, turning_radius: $turning_radius1, length: $length1, width: $width1, gross_weight: $gross_weight1, is_front_fog_lights: $is_front_fog_lights1, is_rear_window_wiper: $is_rear_window_wiper1, is_rear_window_washer: $is_rear_window_washer1, is_rear_window_defogger: $is_rear_window_defogger1, is_brake_assist: $is_brake_assist1, is_power_door_locks: $is_power_door_locks1, is_central_locking: $is_central_locking1, is_power_steering: $is_power_steering1, is_driver_seat_height_adjustable: $is_driver_seat_height_adjustable1, is_day_night_rear_view_mirror: $is_day_night_rear_view_mirror1, is_ecw: $is_ecw1, is_speed_alert: $is_speed_alert1, ncap_rating: $ncap_rating1, claim_status: $claim_status1),
+    insurance_claims(policy_id: $policy_id2, subscription_length: $subscription_length2, vehicle_age: $vehicle_age2, customer_age: $customer_age2, region_code: $region_code2, region_density: $region_density2, segment: $segment2, model: $model2, fuel_type: $fuel_type2, max_torque: $max_torque2, max_power: $max_power2, engine_type: $engine_type2, airbags: $airbags2, is_esc: $is_esc2, is_adjustable_steering: $is_adjustable_steering2, is_tpms: $is_tpms2, is_parking_sensors: $is_parking_sensors2, is_parking_camera: $is_parking_camera2, rear_brakes_type: $rear_brakes_type2, displacement: $displacement2, cylinder: $cylinder2, transmission_type: $transmission_type2, steering_type: $steering_type2, turning_radius: $turning_radius2, length: $length2, width: $width2, gross_weight: $gross_weight2, is_front_fog_lights: $is_front_fog_lights2, is_rear_window_wiper: $is_rear_window_wiper2, is_rear_window_washer: $is_rear_window_washer2, is_rear_window_defogger: $is_rear_window_defogger2, is_brake_assist: $is_brake_assist2, is_power_door_locks: $is_power_door_locks2, is_central_locking: $is_central_locking2, is_power_steering: $is_power_steering2, is_driver_seat_height_adjustable: $is_driver_seat_height_adjustable2, is_day_night_rear_view_mirror: $is_day_night_rear_view_mirror2, is_ecw: $is_ecw2, is_speed_alert: $is_speed_alert2, ncap_rating: $ncap_rating2, claim_status: $claim_status2),
+    $model1 == $model2, $is_power_steering1 != $is_power_steering2 -> #fail.
+
+// FD6: model -> max_power
+e6: insurance_claims(policy_id: $policy_id1, subscription_length: $subscription_length1, vehicle_age: $vehicle_age1, customer_age: $customer_age1, region_code: $region_code1, region_density: $region_density1, segment: $segment1, model: $model1, fuel_type: $fuel_type1, max_torque: $max_torque1, max_power: $max_power1, engine_type: $engine_type1, airbags: $airbags1, is_esc: $is_esc1, is_adjustable_steering: $is_adjustable_steering1, is_tpms: $is_tpms1, is_parking_sensors: $is_parking_sensors1, is_parking_camera: $is_parking_camera1, rear_brakes_type: $rear_brakes_type1, displacement: $displacement1, cylinder: $cylinder1, transmission_type: $transmission_type1, steering_type: $steering_type1, turning_radius: $turning_radius1, length: $length1, width: $width1, gross_weight: $gross_weight1, is_front_fog_lights: $is_front_fog_lights1, is_rear_window_wiper: $is_rear_window_wiper1, is_rear_window_washer: $is_rear_window_washer1, is_rear_window_defogger: $is_rear_window_defogger1, is_brake_assist: $is_brake_assist1, is_power_door_locks: $is_power_door_locks1, is_central_locking: $is_central_locking1, is_power_steering: $is_power_steering1, is_driver_seat_height_adjustable: $is_driver_seat_height_adjustable1, is_day_night_rear_view_mirror: $is_day_night_rear_view_mirror1, is_ecw: $is_ecw1, is_speed_alert: $is_speed_alert1, ncap_rating: $ncap_rating1, claim_status: $claim_status1),
+    insurance_claims(policy_id: $policy_id2, subscription_length: $subscription_length2, vehicle_age: $vehicle_age2, customer_age: $customer_age2, region_code: $region_code2, region_density: $region_density2, segment: $segment2, model: $model2, fuel_type: $fuel_type2, max_torque: $max_torque2, max_power: $max_power2, engine_type: $engine_type2, airbags: $airbags2, is_esc: $is_esc2, is_adjustable_steering: $is_adjustable_steering2, is_tpms: $is_tpms2, is_parking_sensors: $is_parking_sensors2, is_parking_camera: $is_parking_camera2, rear_brakes_type: $rear_brakes_type2, displacement: $displacement2, cylinder: $cylinder2, transmission_type: $transmission_type2, steering_type: $steering_type2, turning_radius: $turning_radius2, length: $length2, width: $width2, gross_weight: $gross_weight2, is_front_fog_lights: $is_front_fog_lights2, is_rear_window_wiper: $is_rear_window_wiper2, is_rear_window_washer: $is_rear_window_washer2, is_rear_window_defogger: $is_rear_window_defogger2, is_brake_assist: $is_brake_assist2, is_power_door_locks: $is_power_door_locks2, is_central_locking: $is_central_locking2, is_power_steering: $is_power_steering2, is_driver_seat_height_adjustable: $is_driver_seat_height_adjustable2, is_day_night_rear_view_mirror: $is_day_night_rear_view_mirror2, is_ecw: $is_ecw2, is_speed_alert: $is_speed_alert2, ncap_rating: $ncap_rating2, claim_status: $claim_status2),
+    $model1 == $model2, $max_power1 != $max_power2 -> #fail.
+
+// FD7: engine_type -> displacement
+e7: insurance_claims(policy_id: $policy_id1, subscription_length: $subscription_length1, vehicle_age: $vehicle_age1, customer_age: $customer_age1, region_code: $region_code1, region_density: $region_density1, segment: $segment1, model: $model1, fuel_type: $fuel_type1, max_torque: $max_torque1, max_power: $max_power1, engine_type: $engine_type1, airbags: $airbags1, is_esc: $is_esc1, is_adjustable_steering: $is_adjustable_steering1, is_tpms: $is_tpms1, is_parking_sensors: $is_parking_sensors1, is_parking_camera: $is_parking_camera1, rear_brakes_type: $rear_brakes_type1, displacement: $displacement1, cylinder: $cylinder1, transmission_type: $transmission_type1, steering_type: $steering_type1, turning_radius: $turning_radius1, length: $length1, width: $width1, gross_weight: $gross_weight1, is_front_fog_lights: $is_front_fog_lights1, is_rear_window_wiper: $is_rear_window_wiper1, is_rear_window_washer: $is_rear_window_washer1, is_rear_window_defogger: $is_rear_window_defogger1, is_brake_assist: $is_brake_assist1, is_power_door_locks: $is_power_door_locks1, is_central_locking: $is_central_locking1, is_power_steering: $is_power_steering1, is_driver_seat_height_adjustable: $is_driver_seat_height_adjustable1, is_day_night_rear_view_mirror: $is_day_night_rear_view_mirror1, is_ecw: $is_ecw1, is_speed_alert: $is_speed_alert1, ncap_rating: $ncap_rating1, claim_status: $claim_status1),
+    insurance_claims(policy_id: $policy_id2, subscription_length: $subscription_length2, vehicle_age: $vehicle_age2, customer_age: $customer_age2, region_code: $region_code2, region_density: $region_density2, segment: $segment2, model: $model2, fuel_type: $fuel_type2, max_torque: $max_torque2, max_power: $max_power2, engine_type: $engine_type2, airbags: $airbags2, is_esc: $is_esc2, is_adjustable_steering: $is_adjustable_steering2, is_tpms: $is_tpms2, is_parking_sensors: $is_parking_sensors2, is_parking_camera: $is_parking_camera2, rear_brakes_type: $rear_brakes_type2, displacement: $displacement2, cylinder: $cylinder2, transmission_type: $transmission_type2, steering_type: $steering_type2, turning_radius: $turning_radius2, length: $length2, width: $width2, gross_weight: $gross_weight2, is_front_fog_lights: $is_front_fog_lights2, is_rear_window_wiper: $is_rear_window_wiper2, is_rear_window_washer: $is_rear_window_washer2, is_rear_window_defogger: $is_rear_window_defogger2, is_brake_assist: $is_brake_assist2, is_power_door_locks: $is_power_door_locks2, is_central_locking: $is_central_locking2, is_power_steering: $is_power_steering2, is_driver_seat_height_adjustable: $is_driver_seat_height_adjustable2, is_day_night_rear_view_mirror: $is_day_night_rear_view_mirror2, is_ecw: $is_ecw2, is_speed_alert: $is_speed_alert2, ncap_rating: $ncap_rating2, claim_status: $claim_status2),
+    $engine_type1 == $engine_type2, $displacement1 != $displacement2 -> #fail.
+
+// FD8: engine_type -> fuel_type
+e8: insurance_claims(policy_id: $policy_id1, subscription_length: $subscription_length1, vehicle_age: $vehicle_age1, customer_age: $customer_age1, region_code: $region_code1, region_density: $region_density1, segment: $segment1, model: $model1, fuel_type: $fuel_type1, max_torque: $max_torque1, max_power: $max_power1, engine_type: $engine_type1, airbags: $airbags1, is_esc: $is_esc1, is_adjustable_steering: $is_adjustable_steering1, is_tpms: $is_tpms1, is_parking_sensors: $is_parking_sensors1, is_parking_camera: $is_parking_camera1, rear_brakes_type: $rear_brakes_type1, displacement: $displacement1, cylinder: $cylinder1, transmission_type: $transmission_type1, steering_type: $steering_type1, turning_radius: $turning_radius1, length: $length1, width: $width1, gross_weight: $gross_weight1, is_front_fog_lights: $is_front_fog_lights1, is_rear_window_wiper: $is_rear_window_wiper1, is_rear_window_washer: $is_rear_window_washer1, is_rear_window_defogger: $is_rear_window_defogger1, is_brake_assist: $is_brake_assist1, is_power_door_locks: $is_power_door_locks1, is_central_locking: $is_central_locking1, is_power_steering: $is_power_steering1, is_driver_seat_height_adjustable: $is_driver_seat_height_adjustable1, is_day_night_rear_view_mirror: $is_day_night_rear_view_mirror1, is_ecw: $is_ecw1, is_speed_alert: $is_speed_alert1, ncap_rating: $ncap_rating1, claim_status: $claim_status1),
+    insurance_claims(policy_id: $policy_id2, subscription_length: $subscription_length2, vehicle_age: $vehicle_age2, customer_age: $customer_age2, region_code: $region_code2, region_density: $region_density2, segment: $segment2, model: $model2, fuel_type: $fuel_type2, max_torque: $max_torque2, max_power: $max_power2, engine_type: $engine_type2, airbags: $airbags2, is_esc: $is_esc2, is_adjustable_steering: $is_adjustable_steering2, is_tpms: $is_tpms2, is_parking_sensors: $is_parking_sensors2, is_parking_camera: $is_parking_camera2, rear_brakes_type: $rear_brakes_type2, displacement: $displacement2, cylinder: $cylinder2, transmission_type: $transmission_type2, steering_type: $steering_type2, turning_radius: $turning_radius2, length: $length2, width: $width2, gross_weight: $gross_weight2, is_front_fog_lights: $is_front_fog_lights2, is_rear_window_wiper: $is_rear_window_wiper2, is_rear_window_washer: $is_rear_window_washer2, is_rear_window_defogger: $is_rear_window_defogger2, is_brake_assist: $is_brake_assist2, is_power_door_locks: $is_power_door_locks2, is_central_locking: $is_central_locking2, is_power_steering: $is_power_steering2, is_driver_seat_height_adjustable: $is_driver_seat_height_adjustable2, is_day_night_rear_view_mirror: $is_day_night_rear_view_mirror2, is_ecw: $is_ecw2, is_speed_alert: $is_speed_alert2, ncap_rating: $ncap_rating2, claim_status: $claim_status2),
+    $engine_type1 == $engine_type2, $fuel_type1 != $fuel_type2 -> #fail.
+
+// FD9: region_code -> region_density
+e9: insurance_claims(policy_id: $policy_id1, subscription_length: $subscription_length1, vehicle_age: $vehicle_age1, customer_age: $customer_age1, region_code: $region_code1, region_density: $region_density1, segment: $segment1, model: $model1, fuel_type: $fuel_type1, max_torque: $max_torque1, max_power: $max_power1, engine_type: $engine_type1, airbags: $airbags1, is_esc: $is_esc1, is_adjustable_steering: $is_adjustable_steering1, is_tpms: $is_tpms1, is_parking_sensors: $is_parking_sensors1, is_parking_camera: $is_parking_camera1, rear_brakes_type: $rear_brakes_type1, displacement: $displacement1, cylinder: $cylinder1, transmission_type: $transmission_type1, steering_type: $steering_type1, turning_radius: $turning_radius1, length: $length1, width: $width1, gross_weight: $gross_weight1, is_front_fog_lights: $is_front_fog_lights1, is_rear_window_wiper: $is_rear_window_wiper1, is_rear_window_washer: $is_rear_window_washer1, is_rear_window_defogger: $is_rear_window_defogger1, is_brake_assist: $is_brake_assist1, is_power_door_locks: $is_power_door_locks1, is_central_locking: $is_central_locking1, is_power_steering: $is_power_steering1, is_driver_seat_height_adjustable: $is_driver_seat_height_adjustable1, is_day_night_rear_view_mirror: $is_day_night_rear_view_mirror1, is_ecw: $is_ecw1, is_speed_alert: $is_speed_alert1, ncap_rating: $ncap_rating1, claim_status: $claim_status1),
+    insurance_claims(policy_id: $policy_id2, subscription_length: $subscription_length2, vehicle_age: $vehicle_age2, customer_age: $customer_age2, region_code: $region_code2, region_density: $region_density2, segment: $segment2, model: $model2, fuel_type: $fuel_type2, max_torque: $max_torque2, max_power: $max_power2, engine_type: $engine_type2, airbags: $airbags2, is_esc: $is_esc2, is_adjustable_steering: $is_adjustable_steering2, is_tpms: $is_tpms2, is_parking_sensors: $is_parking_sensors2, is_parking_camera: $is_parking_camera2, rear_brakes_type: $rear_brakes_type2, displacement: $displacement2, cylinder: $cylinder2, transmission_type: $transmission_type2, steering_type: $steering_type2, turning_radius: $turning_radius2, length: $length2, width: $width2, gross_weight: $gross_weight2, is_front_fog_lights: $is_front_fog_lights2, is_rear_window_wiper: $is_rear_window_wiper2, is_rear_window_washer: $is_rear_window_washer2, is_rear_window_defogger: $is_rear_window_defogger2, is_brake_assist: $is_brake_assist2, is_power_door_locks: $is_power_door_locks2, is_central_locking: $is_central_locking2, is_power_steering: $is_power_steering2, is_driver_seat_height_adjustable: $is_driver_seat_height_adjustable2, is_day_night_rear_view_mirror: $is_day_night_rear_view_mirror2, is_ecw: $is_ecw2, is_speed_alert: $is_speed_alert2, ncap_rating: $ncap_rating2, claim_status: $claim_status2),
+    $region_code1 == $region_code2, $region_density1 != $region_density2 -> #fail.
+
+// FD10: max_torque -> max_power
+e10: insurance_claims(policy_id: $policy_id1, subscription_length: $subscription_length1, vehicle_age: $vehicle_age1, customer_age: $customer_age1, region_code: $region_code1, region_density: $region_density1, segment: $segment1, model: $model1, fuel_type: $fuel_type1, max_torque: $max_torque1, max_power: $max_power1, engine_type: $engine_type1, airbags: $airbags1, is_esc: $is_esc1, is_adjustable_steering: $is_adjustable_steering1, is_tpms: $is_tpms1, is_parking_sensors: $is_parking_sensors1, is_parking_camera: $is_parking_camera1, rear_brakes_type: $rear_brakes_type1, displacement: $displacement1, cylinder: $cylinder1, transmission_type: $transmission_type1, steering_type: $steering_type1, turning_radius: $turning_radius1, length: $length1, width: $width1, gross_weight: $gross_weight1, is_front_fog_lights: $is_front_fog_lights1, is_rear_window_wiper: $is_rear_window_wiper1, is_rear_window_washer: $is_rear_window_washer1, is_rear_window_defogger: $is_rear_window_defogger1, is_brake_assist: $is_brake_assist1, is_power_door_locks: $is_power_door_locks1, is_central_locking: $is_central_locking1, is_power_steering: $is_power_steering1, is_driver_seat_height_adjustable: $is_driver_seat_height_adjustable1, is_day_night_rear_view_mirror: $is_day_night_rear_view_mirror1, is_ecw: $is_ecw1, is_speed_alert: $is_speed_alert1, ncap_rating: $ncap_rating1, claim_status: $claim_status1),
+    insurance_claims(policy_id: $policy_id2, subscription_length: $subscription_length2, vehicle_age: $vehicle_age2, customer_age: $customer_age2, region_code: $region_code2, region_density: $region_density2, segment: $segment2, model: $model2, fuel_type: $fuel_type2, max_torque: $max_torque2, max_power: $max_power2, engine_type: $engine_type2, airbags: $airbags2, is_esc: $is_esc2, is_adjustable_steering: $is_adjustable_steering2, is_tpms: $is_tpms2, is_parking_sensors: $is_parking_sensors2, is_parking_camera: $is_parking_camera2, rear_brakes_type: $rear_brakes_type2, displacement: $displacement2, cylinder: $cylinder2, transmission_type: $transmission_type2, steering_type: $steering_type2, turning_radius: $turning_radius2, length: $length2, width: $width2, gross_weight: $gross_weight2, is_front_fog_lights: $is_front_fog_lights2, is_rear_window_wiper: $is_rear_window_wiper2, is_rear_window_washer: $is_rear_window_washer2, is_rear_window_defogger: $is_rear_window_defogger2, is_brake_assist: $is_brake_assist2, is_power_door_locks: $is_power_door_locks2, is_central_locking: $is_central_locking2, is_power_steering: $is_power_steering2, is_driver_seat_height_adjustable: $is_driver_seat_height_adjustable2, is_day_night_rear_view_mirror: $is_day_night_rear_view_mirror2, is_ecw: $is_ecw2, is_speed_alert: $is_speed_alert2, ncap_rating: $ncap_rating2, claim_status: $claim_status2),
+    $max_torque1 == $max_torque2, $max_power1 != $max_power2 -> #fail.
+
+// FD11: max_power -> max_torque
+e11: insurance_claims(policy_id: $policy_id1, subscription_length: $subscription_length1, vehicle_age: $vehicle_age1, customer_age: $customer_age1, region_code: $region_code1, region_density: $region_density1, segment: $segment1, model: $model1, fuel_type: $fuel_type1, max_torque: $max_torque1, max_power: $max_power1, engine_type: $engine_type1, airbags: $airbags1, is_esc: $is_esc1, is_adjustable_steering: $is_adjustable_steering1, is_tpms: $is_tpms1, is_parking_sensors: $is_parking_sensors1, is_parking_camera: $is_parking_camera1, rear_brakes_type: $rear_brakes_type1, displacement: $displacement1, cylinder: $cylinder1, transmission_type: $transmission_type1, steering_type: $steering_type1, turning_radius: $turning_radius1, length: $length1, width: $width1, gross_weight: $gross_weight1, is_front_fog_lights: $is_front_fog_lights1, is_rear_window_wiper: $is_rear_window_wiper1, is_rear_window_washer: $is_rear_window_washer1, is_rear_window_defogger: $is_rear_window_defogger1, is_brake_assist: $is_brake_assist1, is_power_door_locks: $is_power_door_locks1, is_central_locking: $is_central_locking1, is_power_steering: $is_power_steering1, is_driver_seat_height_adjustable: $is_driver_seat_height_adjustable1, is_day_night_rear_view_mirror: $is_day_night_rear_view_mirror1, is_ecw: $is_ecw1, is_speed_alert: $is_speed_alert1, ncap_rating: $ncap_rating1, claim_status: $claim_status1),
+    insurance_claims(policy_id: $policy_id2, subscription_length: $subscription_length2, vehicle_age: $vehicle_age2, customer_age: $customer_age2, region_code: $region_code2, region_density: $region_density2, segment: $segment2, model: $model2, fuel_type: $fuel_type2, max_torque: $max_torque2, max_power: $max_power2, engine_type: $engine_type2, airbags: $airbags2, is_esc: $is_esc2, is_adjustable_steering: $is_adjustable_steering2, is_tpms: $is_tpms2, is_parking_sensors: $is_parking_sensors2, is_parking_camera: $is_parking_camera2, rear_brakes_type: $rear_brakes_type2, displacement: $displacement2, cylinder: $cylinder2, transmission_type: $transmission_type2, steering_type: $steering_type2, turning_radius: $turning_radius2, length: $length2, width: $width2, gross_weight: $gross_weight2, is_front_fog_lights: $is_front_fog_lights2, is_rear_window_wiper: $is_rear_window_wiper2, is_rear_window_washer: $is_rear_window_washer2, is_rear_window_defogger: $is_rear_window_defogger2, is_brake_assist: $is_brake_assist2, is_power_door_locks: $is_power_door_locks2, is_central_locking: $is_central_locking2, is_power_steering: $is_power_steering2, is_driver_seat_height_adjustable: $is_driver_seat_height_adjustable2, is_day_night_rear_view_mirror: $is_day_night_rear_view_mirror2, is_ecw: $is_ecw2, is_speed_alert: $is_speed_alert2, ncap_rating: $ncap_rating2, claim_status: $claim_status2),
+    $max_power1 == $max_power2, $max_torque1 != $max_torque2 -> #fail.
+]]>
+    </dependencies>
+
+    <configuration>
+        <printLog>true</printLog>
+        <recreateDBOnStart>true</recreateDBOnStart>
+        <applyCellChanges>false</applyCellChanges>
+        <cloneTargetSchema>true</cloneTargetSchema>
+        <cloneSuffix>_dirty</cloneSuffix>
+
+        <exportDirtyDB>false</exportDirtyDB>
+        <exportDirtyDBPath>/Temp/bart/insurance_claims_15/</exportDirtyDBPath>
+        <exportDirtyDBType>CSV</exportDirtyDBType>
+
+        <exportCellChanges>true</exportCellChanges>
+        <exportCellChangesPath>/Temp/bart/insurance_claims_15/changes.csv</exportCellChangesPath>
+
+        <estimateRepairability>false</estimateRepairability>
+        <generateAllChanges>false</generateAllChanges>
+        <avoidInteractions>false</avoidInteractions>
+        <checkChanges>false</checkChanges>
+        <useDeltaDBForChanges>true</useDeltaDBForChanges>
+
+        <errorPercentages>
+            <defaultPercentage>0.0</defaultPercentage>
+            <vioGenQueries>
+                <vioGenQuery id="e1">
+                    <comparison>(model1 == model2)</comparison>
+                    <percentage>15.0</percentage>
+                </vioGenQuery>
+                <vioGenQuery id="e2">
+                    <comparison>(model1 == model2)</comparison>
+                    <percentage>15.0</percentage>
+                </vioGenQuery>
+                <vioGenQuery id="e3">
+                    <comparison>(model1 == model2)</comparison>
+                    <percentage>15.0</percentage>
+                </vioGenQuery>
+                <vioGenQuery id="e4">
+                    <comparison>(model1 == model2)</comparison>
+                    <percentage>15.0</percentage>
+                </vioGenQuery>
+                <vioGenQuery id="e5">
+                    <comparison>(model1 == model2)</comparison>
+                    <percentage>15.0</percentage>
+                </vioGenQuery>
+                <vioGenQuery id="e6">
+                    <comparison>(model1 == model2)</comparison>
+                    <percentage>15.0</percentage>
+                </vioGenQuery>
+                <vioGenQuery id="e7">
+                    <comparison>(engine_type1 == engine_type2)</comparison>
+                    <percentage>15.0</percentage>
+                </vioGenQuery>
+                <vioGenQuery id="e8">
+                    <comparison>(engine_type1 == engine_type2)</comparison>
+                    <percentage>15.0</percentage>
+                </vioGenQuery>
+                <vioGenQuery id="e9">
+                    <comparison>(region_code1 == region_code2)</comparison>
+                    <percentage>15.0</percentage>
+                </vioGenQuery>
+                <vioGenQuery id="e10">
+                    <comparison>(max_torque1 == max_torque2)</comparison>
+                    <percentage>15.0</percentage>
+                </vioGenQuery>
+                <vioGenQuery id="e11">
+                    <comparison>(max_power1 == max_power2)</comparison>
+                    <percentage>15.0</percentage>
+                </vioGenQuery>
+            </vioGenQueries>
+        </errorPercentages>
+
+        <dirtyStrategies>
+            <defaultStrategy>
+                <strategy chars="*" charsToAdd="3">TypoAppendString</strategy>
+            </defaultStrategy>
+            <attributeStrategy>
+                <attribute table="insurance_claims" name="airbags">
+                    <strategy>TypoActiveDomain</strategy>
+                </attribute>
+                <attribute table="insurance_claims" name="displacement">
+                    <strategy>TypoActiveDomain</strategy>
+                </attribute>
+                <attribute table="insurance_claims" name="engine_type">
+                    <strategy>TypoActiveDomain</strategy>
+                </attribute>
+                <attribute table="insurance_claims" name="fuel_type">
+                    <strategy>TypoActiveDomain</strategy>
+                </attribute>
+                <attribute table="insurance_claims" name="is_power_steering">
+                    <strategy>TypoActiveDomain</strategy>
+                </attribute>
+                <attribute table="insurance_claims" name="length">
+                    <strategy>TypoActiveDomain</strategy>
+                </attribute>
+                <attribute table="insurance_claims" name="max_power">
+                    <strategy>TypoActiveDomain</strategy>
+                </attribute>
+                <attribute table="insurance_claims" name="max_torque">
+                    <strategy>TypoActiveDomain</strategy>
+                </attribute>
+                <attribute table="insurance_claims" name="model">
+                    <strategy>TypoActiveDomain</strategy>
+                </attribute>
+                <attribute table="insurance_claims" name="region_code">
+                    <strategy>TypoActiveDomain</strategy>
+                </attribute>
+                <attribute table="insurance_claims" name="region_density">
+                    <strategy>TypoActiveDomain</strategy>
+                </attribute>
+                <attribute table="insurance_claims" name="segment">
+                    <strategy>TypoActiveDomain</strategy>
+                </attribute>
+                <attribute table="insurance_claims" name="steering_type">
+                    <strategy>TypoActiveDomain</strategy>
+                </attribute>
+                <attribute table="insurance_claims" name="transmission_type">
+                    <strategy>TypoActiveDomain</strategy>
+                </attribute>
+                <attribute table="insurance_claims" name="width">
+                    <strategy>TypoActiveDomain</strategy>
+                </attribute>
+            </attributeStrategy>
+        </dirtyStrategies>
+
+        <vioGenQueriesConfiguration>
+            <probabilityFactorForStandardQueries>0.25</probabilityFactorForStandardQueries>
+            <offsetFactorForStandardQueries>0.05</offsetFactorForStandardQueries>
+            <probabilityFactorForSymmetricQueries>0.25</probabilityFactorForSymmetricQueries>
+            <offsetFactorForSymmetricQueries>0.05</offsetFactorForSymmetricQueries>
+            <probabilityFactorForInequalityQueries>0.05</probabilityFactorForInequalityQueries>
+            <offsetFactorForInequalityQueries>0.05</offsetFactorForInequalityQueries>
+            <windowSizeFactorForInequalityQueries>1.5</windowSizeFactorForInequalityQueries>
+        </vioGenQueriesConfiguration>
+    </configuration>
+</task>
