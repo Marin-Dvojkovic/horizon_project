@@ -1,0 +1,169 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<task>
+    <target>
+        <type>DBMS</type>
+        <access-configuration>
+            <driver>org.postgresql.Driver</driver>
+            <uri>jdbc:postgresql:bart_hospital</uri>
+            <schema>target</schema>
+            <login>pguser</login>
+            <password>pguser</password>
+        </access-configuration>
+        <import createTables="true">
+            <input type="csv" separator="," table="hospital">C:/Users/dvojk/repositories/BART-master/examples/hospital/hospital.csv</input>
+        </import>
+    </target>
+
+    <dependencies>
+<![CDATA[
+DCs:
+
+// FD1: facility_id -> address
+e1: hospital(facility_id: $fid1, facility_name: $fn1, address: $ad1, city_town: $ct1, state: $st1, zip_code: $zc1, county_parish: $cp1, telephone_number: $tn1, measure_id: $mi1, measure_name: $mn1, compared_to_national: $cn1, score: $sc1, footnote: $ft1, start_date: $sd1, end_date: $ed1),
+    hospital(facility_id: $fid2, facility_name: $fn2, address: $ad2, city_town: $ct2, state: $st2, zip_code: $zc2, county_parish: $cp2, telephone_number: $tn2, measure_id: $mi2, measure_name: $mn2, compared_to_national: $cn2, score: $sc2, footnote: $ft2, start_date: $sd2, end_date: $ed2),
+    $fid1 == $fid2, $ad1 != $ad2 -> #fail.
+
+// FD2: facility_id -> facility_name
+e2: hospital(facility_id: $fid1, facility_name: $fn1, address: $ad1, city_town: $ct1, state: $st1, zip_code: $zc1, county_parish: $cp1, telephone_number: $tn1, measure_id: $mi1, measure_name: $mn1, compared_to_national: $cn1, score: $sc1, footnote: $ft1, start_date: $sd1, end_date: $ed1),
+    hospital(facility_id: $fid2, facility_name: $fn2, address: $ad2, city_town: $ct2, state: $st2, zip_code: $zc2, county_parish: $cp2, telephone_number: $tn2, measure_id: $mi2, measure_name: $mn2, compared_to_national: $cn2, score: $sc2, footnote: $ft2, start_date: $sd2, end_date: $ed2),
+    $fid1 == $fid2, $fn1 != $fn2 -> #fail.
+
+// FD3: zip_code -> county_parish
+e3: hospital(facility_id: $fid1, facility_name: $fn1, address: $ad1, city_town: $ct1, state: $st1, zip_code: $zc1, county_parish: $cp1, telephone_number: $tn1, measure_id: $mi1, measure_name: $mn1, compared_to_national: $cn1, score: $sc1, footnote: $ft1, start_date: $sd1, end_date: $ed1),
+    hospital(facility_id: $fid2, facility_name: $fn2, address: $ad2, city_town: $ct2, state: $st2, zip_code: $zc2, county_parish: $cp2, telephone_number: $tn2, measure_id: $mi2, measure_name: $mn2, compared_to_national: $cn2, score: $sc2, footnote: $ft2, start_date: $sd2, end_date: $ed2),
+    $zc1 == $zc2, $cp1 != $cp2 -> #fail.
+
+// FD4: zip_code -> state
+e4: hospital(facility_id: $fid1, facility_name: $fn1, address: $ad1, city_town: $ct1, state: $st1, zip_code: $zc1, county_parish: $cp1, telephone_number: $tn1, measure_id: $mi1, measure_name: $mn1, compared_to_national: $cn1, score: $sc1, footnote: $ft1, start_date: $sd1, end_date: $ed1),
+    hospital(facility_id: $fid2, facility_name: $fn2, address: $ad2, city_town: $ct2, state: $st2, zip_code: $zc2, county_parish: $cp2, telephone_number: $tn2, measure_id: $mi2, measure_name: $mn2, compared_to_national: $cn2, score: $sc2, footnote: $ft2, start_date: $sd2, end_date: $ed2),
+    $zc1 == $zc2, $st1 != $st2 -> #fail.
+
+// FD5: {address, city_town} -> zip_code
+e5: hospital(facility_id: $fid1, facility_name: $fn1, address: $ad1, city_town: $ct1, state: $st1, zip_code: $zc1, county_parish: $cp1, telephone_number: $tn1, measure_id: $mi1, measure_name: $mn1, compared_to_national: $cn1, score: $sc1, footnote: $ft1, start_date: $sd1, end_date: $ed1),
+    hospital(facility_id: $fid2, facility_name: $fn2, address: $ad2, city_town: $ct2, state: $st2, zip_code: $zc2, county_parish: $cp2, telephone_number: $tn2, measure_id: $mi2, measure_name: $mn2, compared_to_national: $cn2, score: $sc2, footnote: $ft2, start_date: $sd2, end_date: $ed2),
+    $ad1 == $ad2, $ct1 == $ct2, $zc1 != $zc2 -> #fail.
+
+// FD6: {address, facility_name} -> zip_code
+e6: hospital(facility_id: $fid1, facility_name: $fn1, address: $ad1, city_town: $ct1, state: $st1, zip_code: $zc1, county_parish: $cp1, telephone_number: $tn1, measure_id: $mi1, measure_name: $mn1, compared_to_national: $cn1, score: $sc1, footnote: $ft1, start_date: $sd1, end_date: $ed1),
+    hospital(facility_id: $fid2, facility_name: $fn2, address: $ad2, city_town: $ct2, state: $st2, zip_code: $zc2, county_parish: $cp2, telephone_number: $tn2, measure_id: $mi2, measure_name: $mn2, compared_to_national: $cn2, score: $sc2, footnote: $ft2, start_date: $sd2, end_date: $ed2),
+    $ad1 == $ad2, $fn1 == $fn2, $zc1 != $zc2 -> #fail.
+
+// FD7: measure_id -> measure_name
+e7: hospital(facility_id: $fid1, facility_name: $fn1, address: $ad1, city_town: $ct1, state: $st1, zip_code: $zc1, county_parish: $cp1, telephone_number: $tn1, measure_id: $mi1, measure_name: $mn1, compared_to_national: $cn1, score: $sc1, footnote: $ft1, start_date: $sd1, end_date: $ed1),
+    hospital(facility_id: $fid2, facility_name: $fn2, address: $ad2, city_town: $ct2, state: $st2, zip_code: $zc2, county_parish: $cp2, telephone_number: $tn2, measure_id: $mi2, measure_name: $mn2, compared_to_national: $cn2, score: $sc2, footnote: $ft2, start_date: $sd2, end_date: $ed2),
+    $mi1 == $mi2, $mn1 != $mn2 -> #fail.
+
+// FD8: measure_name -> measure_id
+e8: hospital(facility_id: $fid1, facility_name: $fn1, address: $ad1, city_town: $ct1, state: $st1, zip_code: $zc1, county_parish: $cp1, telephone_number: $tn1, measure_id: $mi1, measure_name: $mn1, compared_to_national: $cn1, score: $sc1, footnote: $ft1, start_date: $sd1, end_date: $ed1),
+    hospital(facility_id: $fid2, facility_name: $fn2, address: $ad2, city_town: $ct2, state: $st2, zip_code: $zc2, county_parish: $cp2, telephone_number: $tn2, measure_id: $mi2, measure_name: $mn2, compared_to_national: $cn2, score: $sc2, footnote: $ft2, start_date: $sd2, end_date: $ed2),
+    $mn1 == $mn2, $mi1 != $mi2 -> #fail.
+]]>
+    </dependencies>
+
+    <configuration>
+        <printLog>true</printLog>
+        <recreateDBOnStart>true</recreateDBOnStart>
+        <applyCellChanges>false</applyCellChanges>
+        <cloneTargetSchema>true</cloneTargetSchema>
+        <cloneSuffix>_dirty</cloneSuffix>
+
+        <exportDirtyDB>false</exportDirtyDB>
+        <exportDirtyDBPath>/Temp/bart/hospital_15/</exportDirtyDBPath>
+        <exportDirtyDBType>CSV</exportDirtyDBType>
+
+        <exportCellChanges>true</exportCellChanges>
+        <exportCellChangesPath>/Temp/bart/hospital_15/changes.csv</exportCellChangesPath>
+
+        <estimateRepairability>false</estimateRepairability>
+        <generateAllChanges>false</generateAllChanges>
+        <avoidInteractions>false</avoidInteractions>
+        <checkChanges>false</checkChanges>
+        <useDeltaDBForChanges>true</useDeltaDBForChanges>
+
+        <errorPercentages>
+            <defaultPercentage>0.0</defaultPercentage>
+            <vioGenQueries>
+                <vioGenQuery id="e1">
+                    <comparison>(fid1 == fid2)</comparison>
+                    <percentage>15.0</percentage>
+                </vioGenQuery>
+                <vioGenQuery id="e2">
+                    <comparison>(fid1 == fid2)</comparison>
+                    <percentage>15.0</percentage>
+                </vioGenQuery>
+                <vioGenQuery id="e3">
+                    <comparison>(zc1 == zc2)</comparison>
+                    <percentage>15.0</percentage>
+                </vioGenQuery>
+                <vioGenQuery id="e4">
+                    <comparison>(zc1 == zc2)</comparison>
+                    <percentage>15.0</percentage>
+                </vioGenQuery>
+                <vioGenQuery id="e5">
+                    <comparison>(ad1 == ad2)</comparison>
+                    <percentage>15.0</percentage>
+                </vioGenQuery>
+                <vioGenQuery id="e5">
+                    <comparison>(ct1 == ct2)</comparison>
+                    <percentage>15.0</percentage>
+                </vioGenQuery>
+                <vioGenQuery id="e6">
+                    <comparison>(ad1 == ad2)</comparison>
+                    <percentage>15.0</percentage>
+                </vioGenQuery>
+                <vioGenQuery id="e6">
+                    <comparison>(fn1 == fn2)</comparison>
+                    <percentage>15.0</percentage>
+                </vioGenQuery>
+                <vioGenQuery id="e7">
+                    <comparison>(mi1 == mi2)</comparison>
+                    <percentage>15.0</percentage>
+                </vioGenQuery>
+                <vioGenQuery id="e8">
+                    <comparison>(mn1 == mn2)</comparison>
+                    <percentage>15.0</percentage>
+                </vioGenQuery>
+            </vioGenQueries>
+        </errorPercentages>
+
+        <dirtyStrategies>
+            <defaultStrategy>
+                <strategy chars="*" charsToAdd="3">TypoAppendString</strategy>
+            </defaultStrategy>
+            <attributeStrategy>
+                <attribute table="hospital" name="address">
+                    <strategy>TypoActiveDomain</strategy>
+                </attribute>
+                <attribute table="hospital" name="facility_name">
+                    <strategy>TypoActiveDomain</strategy>
+                </attribute>
+                <attribute table="hospital" name="county_parish">
+                    <strategy>TypoActiveDomain</strategy>
+                </attribute>
+                <attribute table="hospital" name="state">
+                    <strategy>TypoActiveDomain</strategy>
+                </attribute>
+                <attribute table="hospital" name="zip_code">
+                    <strategy>TypoActiveDomain</strategy>
+                </attribute>
+                <attribute table="hospital" name="measure_id">
+                    <strategy>TypoActiveDomain</strategy>
+                </attribute>
+                <attribute table="hospital" name="measure_name">
+                    <strategy>TypoActiveDomain</strategy>
+                </attribute>
+            </attributeStrategy>
+        </dirtyStrategies>
+
+        <vioGenQueriesConfiguration>
+            <probabilityFactorForStandardQueries>0.25</probabilityFactorForStandardQueries>
+            <offsetFactorForStandardQueries>0.05</offsetFactorForStandardQueries>
+            <probabilityFactorForSymmetricQueries>0.25</probabilityFactorForSymmetricQueries>
+            <offsetFactorForSymmetricQueries>0.05</offsetFactorForSymmetricQueries>
+            <probabilityFactorForInequalityQueries>0.05</probabilityFactorForInequalityQueries>
+            <offsetFactorForInequalityQueries>0.05</offsetFactorForInequalityQueries>
+            <windowSizeFactorForInequalityQueries>1.5</windowSizeFactorForInequalityQueries>
+        </vioGenQueriesConfiguration>
+    </configuration>
+</task>
+
