@@ -1,7 +1,7 @@
 import polars as pl
 
 from eval.report import characterize
-from horizon.utils.fd import FunctionalDependency as FD
+from horizon.fds.fd import FunctionalDependency as FD
 
 
 def test_characterize_merges_both_sides():

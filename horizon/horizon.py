@@ -1,3 +1,4 @@
+import argparse
 import logging
 import sys
 import time
@@ -5,25 +6,61 @@ from pathlib import Path
 
 import polars as pl
 import utils.loaders
-from FDGraph import FDGraph
+from fd_pattern_graph import FDPatternGraph
+from fds.fd import FunctionalDependency
+from fds.fd_pattern import FDPattern
+from fds.pattern_expression import PatternExpression
+from fds.set_of_fds import SetOfFDs
 from static_fd_analysis import get_ordered_fds
-from utils.fd import FunctionalDependency
-from utils.fd_pattern import FDPattern
 from utils.logging_config import get_logger, setup_logging
-from utils.pattern_expression import PatternExpression
 
 # Setup logging
-logger = get_logger(__name__)
+logger: logging.Logger = get_logger(__name__)
 
-# Output directory
-output_dir: Path = Path("output")
+# Parse arguments
+parser: argparse.ArgumentParser = argparse.ArgumentParser(
+    description="Horizon: Scalable Dependency-driven Data Cleaning."
+)
+parser.add_argument(
+    "--dataset_dir",
+    "-ds",
+    type=str,
+    required=True,
+    help="Dataset directory. Required argument.",
+)
+parser.add_argument(
+    "--dirty_data_file",
+    "-dd",
+    type=str,
+    default="dirty.csv",
+    help="Dirty data file, relative to the given dataset_dir. (default: dirty.csv)",
+)
+parser.add_argument(
+    "--output_dir",
+    "-o",
+    type=str,
+    default="output",
+    help="Output directory, relative to the cwd. (default: output)",
+)
+parser.add_argument(
+    "--log_level",
+    "-l",
+    type=str,
+    default="INFO",
+    help="Log level. Options: DEBUG, INFO, ERROR. (default: INFO)",
+)
+args: argparse.Namespace = parser.parse_args()
+
+# Dataset directory and output directory
+dataset_dir: Path = Path(args.dataset_dir)
+output_dir: Path = Path(args.output_dir)
 
 # Variables for using different datasets
-lhs_column_name: str = "LHS"
-rhs_column_name: str = "RHS"
+lhs_column_name: str = "from"
+rhs_column_name: str = "to"
 
 
-def load_fds(fds_csv_path: Path) -> list[FunctionalDependency]:
+def load_fds(fds_csv_path: Path) -> SetOfFDs:
     logger.debug(f"Loading FDs from: {fds_csv_path}")
     # Check fds.csv path
     if not fds_csv_path.exists:
@@ -31,33 +68,37 @@ def load_fds(fds_csv_path: Path) -> list[FunctionalDependency]:
         raise ValueError(f"CSV file {str(fds_csv_path)} does not exist.")
 
     # Use CSV data loader to read input FDs from file
-    fds: list[FunctionalDependency] = utils.loaders.get_fds(
+    fds: SetOfFDs = utils.loaders.get_fds(
         fds_csv_path, utils.loaders.CSVFDLoader(lhs_column_name, rhs_column_name)
     )
     logger.info(f"Loaded {len(fds)} functional dependencies")
     return fds
 
 
-def main(dataset_dir: Path) -> None:
+def main() -> None:
     dataset_name: str = dataset_dir.name
 
-    logger.info(f"Starting Horizon pipeline with dataset {dataset_name}: {dataset_dir}")
+    logger.info(
+        f"Starting Horizon pipeline with dataset '{dataset_name}': {dataset_dir}"
+    )
 
     # Verify data path
     fds_path: Path = dataset_dir / "fds.csv"
-    dirty_data_path = dataset_dir / "dirty.csv"
-    clean_data_path = dataset_dir / "clean.csv"
+    dirty_data_path: Path = dataset_dir / args.dirty_data_file
     logger.debug(f"FD path: {fds_path}")
     logger.debug(f"Dirty data path: {dirty_data_path}")
-    logger.debug(f"Clean data path: {clean_data_path}")
 
     # Load FDs
     logger.info("Loading functional dependencies...")
-    set_of_fds: list[FunctionalDependency] = load_fds(fds_path)
+    set_of_fds: SetOfFDs = load_fds(fds_path)
 
-    # Build FD pattern graph
-    logger.info("Building FD pattern graph...")
-    fd_graph: FDGraph = FDGraph(str(dirty_data_path), str(fds_path))
+    # Load dirty data
+    logger.info("Loading dirty data...")
+    # dirty_data: pl.DataFrame = pl.read_csv(dirty_data_path)
+    dirty_data: pl.DataFrame = utils.loaders.load_table(dirty_data_path)
+    logger.info(
+        f"Loaded dirty data with {len(dirty_data)} tuples and {len(dirty_data.columns)} columns"
+    )
 
     # Get traversal order
     logger.info("Computing traversal order for FDs...")
@@ -65,13 +106,11 @@ def main(dataset_dir: Path) -> None:
         set_of_fds, dataset_name, output_dir
     )
 
-    # Compute repairs for dirty data
-    logger.info("Loading dirty data...")
-    dirty_data: pl.DataFrame = pl.read_csv(dirty_data_path)
-    logger.info(
-        f"Loaded dirty data with {len(dirty_data)} tuples and {len(dirty_data.columns)} columns"
-    )
+    # Build FD pattern graph
+    logger.info("Building FD pattern graph...")
+    fd_graph: FDPatternGraph = FDPatternGraph(str(dirty_data_path), set_of_fds)
 
+    # Compute repairs for dirty data
     pattern_expressions: list[PatternExpression] = []
     repair_table: dict[FunctionalDependency, dict[str, str]] = {
         fd: {} for fd in set_of_fds
@@ -84,9 +123,10 @@ def main(dataset_dir: Path) -> None:
         p_exp: PatternExpression = PatternExpression(t)
         for i in range(len(ordered_fds)):
             for fd in ordered_fds[i]:
-                lval: str = str(
-                    dirty_data[t, fd.lhs[0]]
-                )  # TODO: Support multiple attributes on LHS
+                # TODO: Support multiple attributes on LHS
+                if isinstance(fd.lhs, tuple):
+                    continue
+                lval: str = str(dirty_data[t, fd.lhs])
                 rval: str = str(dirty_data[t, fd.rhs])
                 existing_pattern: FDPattern | None = p_exp.attribute_in_expression(
                     fd.rhs
@@ -110,7 +150,7 @@ def main(dataset_dir: Path) -> None:
                     )
                 else:
                     # Choose best edge from FD pattern graph
-                    rhs, rval = fd_graph.choose_best_next_edge(fd.lhs[0], lval, fd.rhs)
+                    rhs, rval = fd_graph.choose_best_next_edge(fd.lhs, lval, fd.rhs)
                     pattern: FDPattern = FDPattern(fd, lval, rval)
                     p_exp.add_fd_pattern(pattern)
                     repair_table[fd][lval] = rval
@@ -152,18 +192,12 @@ def main(dataset_dir: Path) -> None:
 
 if __name__ == "__main__":
     # Setup logging
-    setup_logging(log_level=logging.DEBUG)
+    setup_logging(log_level=getattr(logging, args.log_level))
 
-    # Parse arguments
-    if len(sys.argv) != 2:
-        print("Usage: python horizon.py <dataset_dir>")
-        sys.exit(1)
-
-    dataset_dir: str = sys.argv[1]
-    logger.info(f"Horizon pipeline started with arguments: {sys.argv[1:]}")
+    logger.info(f"Horizon pipeline started with arguments: {vars(args)}")
 
     try:
-        main(Path(dataset_dir))
+        main()
         logger.info("Pipeline execution completed successfully")
     except Exception as e:
         logger.error(f"Pipeline execution failed: {str(e)}", exc_info=True)

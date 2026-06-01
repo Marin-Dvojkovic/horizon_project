@@ -9,8 +9,8 @@ from eval.fd_eval import (
     g3_error,
     violation_clusters,
 )
+from horizon.fds.fd import FunctionalDependency
 from horizon.utils.loaders import load_table
-from horizon.utils.fd import FunctionalDependency
 
 
 def characterize(df: pl.DataFrame, fds: list[FunctionalDependency]) -> dict:
