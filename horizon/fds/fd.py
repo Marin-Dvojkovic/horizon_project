@@ -7,7 +7,9 @@ class FunctionalDependency:
         self._rhs = rhs
 
     @property
-    def lhs(self) -> tuple:
+    def lhs(self) -> str | tuple:
+        if len(self._lhs) == 1:
+            return self._lhs[0]
         return self._lhs
 
     @property
@@ -19,15 +21,18 @@ class FunctionalDependency:
         return f"FD({lhs_str} -> {self._rhs})"
 
     def __eq__(self, other: object) -> bool:
-        if isinstance(other, tuple) and isinstance(other[0], tuple):
-            return self._lhs == other[0] and self._rhs == other[1]
+        if isinstance(other, tuple):
+            return self.lhs == other[0] and self._rhs == other[1]
         elif not isinstance(other, FunctionalDependency):
             return NotImplemented
-        return self._lhs == other._lhs and self._rhs == other._rhs
+        return self.lhs == other.lhs and self._rhs == other._rhs
 
     # required by __eq__; allows use in sets and as dict keys (e.g. fd in seen_fds)
     def __hash__(self) -> int:
-        return hash((self._lhs, self._rhs))
+        return hash((self.lhs, self._rhs))
 
     def as_tuple(self) -> tuple:
-        return (", ".join(self._lhs), self.rhs)
+        return (self.lhs, self._rhs)
+
+    def get_attributes(self) -> list[str]:
+        return [*self._lhs, self.rhs]

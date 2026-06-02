@@ -3,8 +3,9 @@ from pathlib import Path
 
 import pandas as pd
 import polars as pl
+from fds.fd import FunctionalDependency
+from fds.set_of_fds import SetOfFDs
 
-from .fd import FunctionalDependency
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -12,7 +13,7 @@ logger = get_logger(__name__)
 
 class FDLoader(ABC):
     @abstractmethod
-    def load(self, source) -> list[FunctionalDependency]: ...
+    def load(self, source) -> SetOfFDs: ...
 
 
 class CSVFDLoader(FDLoader):
@@ -21,13 +22,15 @@ class CSVFDLoader(FDLoader):
     ) -> None:
         self._lhs_column_name: str = lhs_column_name
         self._rhs_column_name: str = rhs_column_name
-        logger.debug(f"Initialized CSVFDLoader with LHS column: {lhs_column_name}, RHS column: {rhs_column_name}")
+        logger.debug(
+            f"Initialized CSVFDLoader with LHS column: {lhs_column_name}, RHS column: {rhs_column_name}"
+        )
 
-    def load(self, source: str | Path) -> list[FunctionalDependency]:
+    def load(self, source: str | Path) -> SetOfFDs:
         logger.debug(f"Loading FDs from CSV: {source}")
         df = pd.read_csv(source)
         logger.debug(f"Loaded CSV with {len(df)} rows")
-        result = []
+        set_of_fds = SetOfFDs()
         for _, row in df.iterrows():
             # composite LHS is ";"-separated; lowercase to match load_table's columns
             lhs = tuple(
@@ -35,9 +38,9 @@ class CSVFDLoader(FDLoader):
                 for attr in str(row[self._lhs_column_name]).split(";")
             )
             rhs = str(row[self._rhs_column_name]).strip().lower()
-            result.append(FunctionalDependency(lhs, rhs))
-        logger.info(f"Loaded {len(result)} functional dependencies from {source}")
-        return result
+            set_of_fds.add_fd(FunctionalDependency(lhs, rhs))
+        logger.info(f"Loaded {len(set_of_fds)} functional dependencies from {source}")
+        return set_of_fds
 
 
 _EXTENSION_LOADERS: dict[str, type[FDLoader]] = {
@@ -45,9 +48,7 @@ _EXTENSION_LOADERS: dict[str, type[FDLoader]] = {
 }
 
 
-def get_fds(
-    source: str | Path, loader: FDLoader | None = None
-) -> list[FunctionalDependency]:
+def get_fds(source: str | Path, loader: FDLoader | None = None) -> SetOfFDs:
     logger.debug(f"Getting FDs from source: {source}")
     if loader is None:
         ext = Path(source).suffix.lower()

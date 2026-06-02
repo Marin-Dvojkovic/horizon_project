@@ -8,7 +8,7 @@ from eval.fd_eval import (
     g3_error,
     violation_clusters,
 )
-from horizon.utils.fd import FunctionalDependency as FD
+from horizon.fds.fd import FunctionalDependency as FD
 
 
 def test_attribute_overlap_empty():
@@ -150,9 +150,7 @@ def test_violation_clusters_clean_fd_empty():
 
 def test_violation_clusters_mixed_groups():
     # Group y is clean (only rhs=9) and must be excluded; group x has 2 rhs values.
-    df = pl.DataFrame(
-        {"a": ["x", "x", "x", "y", "y"], "b": [1, 1, 2, 9, 9]}
-    )
+    df = pl.DataFrame({"a": ["x", "x", "x", "y", "y"], "b": [1, 1, 2, 9, 9]})
     out = violation_clusters(df, FD("a", "b"))
     assert out.to_dicts() == [
         {"a": "x", "b": 1, "count": 2},

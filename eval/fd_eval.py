@@ -3,7 +3,7 @@ from itertools import combinations
 
 import polars as pl
 
-from horizon.utils.fd import FunctionalDependency
+from horizon.fds.fd import FunctionalDependency
 
 
 def fd_lhs_redundancy(

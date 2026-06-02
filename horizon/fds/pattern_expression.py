@@ -1,3 +1,5 @@
+from typing import Iterator
+
 from .fd_pattern import FDPattern
 
 
@@ -28,6 +30,16 @@ class PatternExpression:
     # required by __eq__; allows use in sets and as dict keys (e.g. fd in seen_fds)
     def __hash__(self) -> int:
         return hash(str(self))
+
+    # Allows instances of this class to be indexed using square brackets
+    def __getitem__(self, index: int) -> FDPattern:
+        return self._fd_patterns[index]
+
+    def __iter__(self) -> Iterator[FDPattern]:
+        return iter(self._fd_patterns)
+
+    def __len__(self) -> int:
+        return len(self._fd_patterns)
 
     def add_fd_pattern(self, fd_pattern: FDPattern) -> None:
         self._fd_patterns.append(fd_pattern)

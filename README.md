@@ -21,12 +21,15 @@ This installs all dependencies (defined in [`pyproject.toml`](pyproject.toml).) 
 In the project directory, run:
 
 ```bash
-uv run horizon/horizon.py <dataset_dir>
+uv run horizon/horizon.py --dataset_dir path/to/dataset/ --dirty_data_file dirty.csv --output_dir output --log_level INFO
 ```
 
 Explanation of arguments:
 
-- _dataset_dir_: Directory containing clean and dirty data, as well as the functional dependencies.
+- _--dataset_dir_ or _-ds_: Directory containing clean (`clean.csv`) and dirty data (`dirty.csv`, can be configured via _-dd_), as well as the functional dependencies (`fds.csv`). Required argument.
+- _--dirty_data_file_ or _-dd_: Dirty data file, relative to the given dataset_dir. (default: dirty.csv)
+- _output_dir_ or _-o_: Output directory. (default: output)
+- _log_level_ or _-l_: Log level. Options: DEBUG, INFO, ERROR. (default: INFO)
 
 Run the tests with `uv run pytest`.
 
