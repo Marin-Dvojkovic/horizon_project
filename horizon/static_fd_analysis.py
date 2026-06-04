@@ -1,4 +1,3 @@
-import sys
 import time
 from pathlib import Path
 
@@ -12,7 +11,7 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 # Use matplotlib as backend for igraph
-enable_plotting: bool = True
+plotting_enabled: bool
 ig.config["plotting.backend"] = "matplotlib"
 
 
@@ -55,7 +54,7 @@ class FDGraph:
             ]
         )
 
-        if enable_plotting:
+        if plotting_enabled:
             logger.debug("Saving FD graph visualization")
             plt.figure(figsize=(max(7, g.vcount() / 2), max(7, g.vcount() / 2)))
 
@@ -82,7 +81,7 @@ class FDGraph:
         components: ig.VertexClustering = Graph.components(self._g)
         logger.debug(f"Found {len(components)} components")
 
-        if enable_plotting:
+        if plotting_enabled:
             logger.debug("Saving component visualization")
             plt.figure(
                 figsize=(max(7, self._g.vcount() / 2), max(7, self._g.vcount() / 2))
@@ -111,7 +110,7 @@ class FDGraph:
             combine_edges={"fd_index": lambda fd_indices: fd_indices},
         )
 
-        if enable_plotting:
+        if plotting_enabled:
             logger.debug("Saving SCC graph visualization")
             plt.figure(figsize=(max(7, scc_g.vcount() / 2), max(7, scc_g.vcount() / 2)))
 
@@ -280,8 +279,14 @@ class FDGraph:
 
 
 def get_ordered_fds(
-    set_of_fds: SetOfFDs, dataset_name: str, output_dir: Path
+    set_of_fds: SetOfFDs,
+    dataset_name: str,
+    output_dir: Path,
+    enable_plotting: bool = True,
 ) -> list[list[FunctionalDependency]]:
+    global plotting_enabled
+    plotting_enabled = enable_plotting
+
     logger.info("Computing ordered FDs for pipeline execution")
 
     start: float = time.time()
@@ -296,6 +301,9 @@ def get_ordered_fds(
     set_of_fds.set_bound_attributes(
         {fds[0].lhs for fds in ordered_fds if not isinstance(fds[0].lhs, tuple)}
     )  # TODO: Support multiple attributes on LHS
+    logger.info(
+        f"Identified {len(set_of_fds.bound_attributes)} bound attributes: {set_of_fds.bound_attributes}"
+    )
 
     logger.info(f"Computed traversal order with {len(ordered_fds)} groups")
     for i, fd_group in enumerate(ordered_fds):
