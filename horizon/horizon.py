@@ -116,18 +116,25 @@ def main() -> None:
         fd: {} for fd in set_of_fds
     }
 
+    # Repair on Python lists, not the Polars frame: per-cell df[t, col] reads
+    # and especially df[t, col] = val writes rebuild whole Arrow columns
+    # (O(n) each), making the loop O(n^2). dict-of-lists makes them O(1);
+    # rebuild the frame once at the end.
+    columns: dict[str, list[str]] = dirty_data.to_dict(as_series=False)
+    n_tuples: int = len(dirty_data)
+
     logger.info("Starting tuple repair process...")
     start: float = time.time()
     # Iterate over tuples and compute pattern expression for each
-    for t in range(len(dirty_data)):
+    for t in range(n_tuples):
         p_exp: PatternExpression = PatternExpression(t)
         for i in range(len(ordered_fds)):
             for fd in ordered_fds[i]:
                 # TODO: Support multiple attributes on LHS
                 if isinstance(fd.lhs, tuple):
                     continue
-                lval: str = str(dirty_data[t, fd.lhs])
-                rval: str = str(dirty_data[t, fd.rhs])
+                lval: str = str(columns[fd.lhs][t])
+                rval: str = str(columns[fd.rhs][t])
                 existing_pattern: FDPattern | None = p_exp.attribute_in_expression(
                     fd.rhs
                 )
@@ -159,11 +166,11 @@ def main() -> None:
                     )
 
                 # Apply repair in place
-                dirty_data[t, fd.rhs] = rval
+                columns[fd.rhs][t] = rval
 
         pattern_expressions.append(p_exp)
-        if (t + 1) % max(1, len(dirty_data) // 10) == 0:
-            logger.info(f"Repaired {t + 1}/{len(dirty_data)} tuples")
+        if (t + 1) % max(1, n_tuples // 10) == 0:
+            logger.info(f"Repaired {t + 1}/{n_tuples} tuples")
 
     end: float = time.time()
     elapsed_time: float = end - start
@@ -176,15 +183,16 @@ def main() -> None:
         logger.info(f"Creating output directory under {output_dir}")
     output_dir.mkdir(exist_ok=True)
 
-    # Save cleaned data
+    # Save cleaned data (rebuild the frame from the repaired columns)
+    cleaned_data: pl.DataFrame = pl.DataFrame(columns)
     data_output_path: Path = output_dir / f"{dataset_name}_cleaned_data.csv"
-    dirty_data.write_csv(data_output_path)
+    cleaned_data.write_csv(data_output_path)
     logger.info(f"Cleaned data saved to {data_output_path}")
     logger.info(f"Pipeline completed successfully. Total time: {elapsed_time:.2f}s")
 
     # Save pattern expressions as lineage
     exp_output_path: Path = output_dir / f"{dataset_name}_final_pattern_expressions.txt"
-    exp_file = open(exp_output_path, "w")
+    exp_file = open(exp_output_path, "w", encoding="utf-8")
     exp_file.writelines("\n".join(f"{str(p_exp)}" for p_exp in pattern_expressions))
     exp_file.close()
     logger.info(f"Final pattern expressions saved to {exp_output_path}")

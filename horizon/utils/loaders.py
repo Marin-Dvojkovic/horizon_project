@@ -62,7 +62,9 @@ def get_fds(source: str | Path, loader: FDLoader | None = None) -> SetOfFDs:
 
 
 def _scan_csv(source: str | Path) -> pl.LazyFrame:
-    return pl.scan_csv(source, infer_schema_length=10_000)
+    # read every column as Utf8: Horizon treats all cells as strings, and
+    # dtype inference would rewrite e.g. "5" -> "5.0" on output
+    return pl.scan_csv(source, infer_schema_length=0)
 
 
 def _scan_parquet(source: str | Path) -> pl.LazyFrame:
