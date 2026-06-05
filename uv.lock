@@ -564,6 +564,7 @@ dependencies = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "polars" },
+    { name = "pytest" },
     { name = "python-dotenv" },
 ]
 
@@ -586,6 +587,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.21,<2.0" },
     { name = "pandas", specifier = ">=1.5,<2.0" },
     { name = "polars", specifier = ">=1.41.1" },
+    { name = "pytest", specifier = ">=9.0.3" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
 ]
 

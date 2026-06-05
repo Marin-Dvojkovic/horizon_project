@@ -7,7 +7,6 @@ Each unique (column, value) pair becomes a node. This means:
 - Edges represent functional dependencies between column-value pairs
 """
 
-import sys
 import time
 from collections import Counter
 from pathlib import Path
@@ -40,14 +39,15 @@ class FDPatternGraph:
             data_path: Path to the CSV file containing the data
             set_of_fds: Parsed set of functional dependencies
         """
-        logger.info(
-            f"Initializing FDPatternGraph with data: {data_path}, FDs: {str(set_of_fds)}"
-        )
         self._set_of_fds = SetOfFDs(
             [fd for fd in set_of_fds if not isinstance(fd.lhs, tuple)],
             set_of_fds.bound_attributes,
         )  # TODO: Support multiple attributes on LHS
         self._fd_columns = self._set_of_fds.unique_attributes
+
+        logger.info(
+            f"Initializing FDPatternGraph with data: {data_path}, FDs: {str(self._set_of_fds)}"
+        )
 
         # Load data
         logger.debug(f"Loading data from {data_path}")
@@ -70,6 +70,11 @@ class FDPatternGraph:
         if enable_plotting:
             logger.debug("Saving FD pattern graph visualization")
             nx.draw(self.graph, with_labels=True, pos=nx.circular_layout(self.graph))
+            nx.draw_networkx_edge_labels(
+                self.graph,
+                pos=nx.circular_layout(self.graph),
+                edge_labels=nx.get_edge_attributes(self.graph, "quality"),
+            )
             plt.savefig(str(output_dir / "fd_pattern_graph.png"))
             plt.clf()
 
