@@ -1,3 +1,4 @@
+import json
 import time
 from pathlib import Path
 
@@ -277,6 +278,64 @@ class FDGraph:
 
         return ordered_fds
 
+    def graph_data(self) -> dict:
+        """Structured, JSON-serialisable description of the graphs for the UI.
+
+        Read-only over the same igraph objects used for ordering (never mutates
+        them), so it cannot affect FD order. Node ids are vertex indices; labels
+        flatten composite (tuple) names. Mirrors the SCC grouping the pipeline
+        itself uses (`Graph.components`) so the picture matches the computation.
+        """
+
+        def label(name) -> str:
+            if isinstance(name, (list, tuple)):
+                return ", ".join(label(part) for part in name)
+            return str(name)
+
+        g = self._g
+        comps = Graph.components(g)  # same call the SCC graph is built from
+        membership = comps.membership
+
+        nodes = [{"id": v, "label": label(g.vs[v]["name"])} for v in range(g.vcount())]
+        edges = [{"source": e.source, "target": e.target} for e in g.es]
+        sccs = [list(members) for members in comps]
+
+        # condensation in topological (processing) order
+        dag = self._scc_g.copy()
+        dag.simplify(loops=True, multiple=True)
+        try:
+            comp_order = dag.topological_sorting(mode="out")
+        except Exception:
+            comp_order = list(range(self._scc_g.vcount()))
+
+        comp_members: dict[int, list[int]] = {}
+        for v, c in enumerate(membership):
+            comp_members.setdefault(c, []).append(v)
+
+        pos_of_comp: dict[int, int] = {}
+        scc_nodes = []
+        for pos, c in enumerate(comp_order):
+            members = comp_members.get(c, [])
+            pos_of_comp[c] = pos
+            scc_nodes.append(
+                {
+                    "members": members,
+                    "label": ", ".join(label(g.vs[m]["name"]) for m in members),
+                }
+            )
+        scc_edges = [
+            {"source": pos_of_comp[e.source], "target": pos_of_comp[e.target]}
+            for e in self._scc_g.es
+            if e.source != e.target
+        ]
+
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "sccs": sccs,
+            "scc_order": {"nodes": scc_nodes, "edges": scc_edges},
+        }
+
 
 def get_ordered_fds(
     set_of_fds: SetOfFDs,
@@ -308,6 +367,16 @@ def get_ordered_fds(
     logger.info(f"Computed traversal order with {len(ordered_fds)} groups")
     for i, fd_group in enumerate(ordered_fds):
         logger.debug(f"Group {i}: {len(fd_group)} FDs")
+
+    # save structured graph data for the UI to render itself (independent of the
+    # PNG export and of FD ordering — best effort, never fatal)
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        graph_json = output_dir / f"{dataset_name}_graph.json"
+        graph_json.write_text(json.dumps(fd_graph.graph_data(), indent=2), encoding="utf-8")
+        logger.debug(f"Saved graph data to {graph_json}")
+    except Exception as e:
+        logger.warning(f"Could not export graph data: {e}")
 
     end: float = time.time()
     logger.info(f"Completed ordering FDs in {(end - start):.2f}s")

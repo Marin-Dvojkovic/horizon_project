@@ -17,7 +17,8 @@ dependencies = [
     "polars>=1.41.1",
     "duckdb>=1.5.2",
     "python-dotenv>=1.2.2",
-    "pytest>=9.0.3"
+    "pytest>=9.0.3",
+    "streamlit>=1.40"
 ]
 
 [tool.uv]
