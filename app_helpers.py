@@ -44,7 +44,9 @@ def pipeline() -> ModuleType:
     if _pipeline is not None:
         return _pipeline
     _bootstrap_path()
-    spec = importlib.util.spec_from_file_location("horizon_pipeline", HZN / "horizon.py")
+    spec = importlib.util.spec_from_file_location(
+        "horizon_pipeline", HZN / "horizon.py"
+    )
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -107,6 +109,7 @@ def run_pipeline(
     pipe = pipeline()
     from fd_pattern_graph import FDPatternGraph
     from static_fd_analysis import get_ordered_fds
+
     from eval.effectiveness_eval import evaluate_repair
 
     ds_dir = DATASETS / dataset
@@ -155,9 +158,7 @@ def run_pipeline(
         hzn_logger.setLevel(logging.INFO)
         hzn_logger.addHandler(handler)
     try:
-        columns, pattern_expressions = pipe.repair_dirty_data(
-            dirty, ordered_fds, graph
-        )
+        columns, pattern_expressions = pipe.repair_dirty_data(dirty, ordered_fds, graph)
     finally:
         if handler:
             hzn_logger.removeHandler(handler)
@@ -247,7 +248,7 @@ def fd_graph_dot(data: dict) -> str:
             lines.append("    " + "; ".join(str(m) for m in members) + ";")
             lines.append("  }")
     for edge in data["edges"]:
-        lines.append(f'  {edge["source"]} -> {edge["target"]};')
+        lines.append(f"  {edge['source']} -> {edge['target']} [label={edge['order']}];")
     lines.append("}")
     return "\n".join(lines)
 
@@ -265,9 +266,9 @@ def scc_order_dot(data: dict) -> str:
     for i, node in enumerate(so["nodes"]):
         safe = node["label"].replace('"', "'")
         cyclic = ' color="#d1495b"' if len(node["members"]) > 1 else ""
-        lines.append(f'  {i} [label="[{i}] {safe}"{cyclic}];')
+        lines.append(f'  {i} [label="{safe}"{cyclic}];')
     for edge in so["edges"]:
-        lines.append(f'  {edge["source"]} -> {edge["target"]};')
+        lines.append(f"  {edge['source']} -> {edge['target']} [label={edge['order']}];")
     lines.append("}")
     return "\n".join(lines)
 

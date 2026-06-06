@@ -16,11 +16,12 @@ class SetOfFDs:
         # default to fresh containers; shared mutable defaults would leak FDs
         # across instances (e.g. load_fds() builds several in one process)
         self._set_of_fds = set_of_fds if set_of_fds is not None else []
-        bound_attributes = bound_attributes if bound_attributes is not None else set()
+        self._bound_attributes = (
+            bound_attributes if bound_attributes is not None else set()
+        )
         self._unique_attributes = {
             attribute for fd in self._set_of_fds for attribute in fd.get_attributes()
         }
-        self._bound_attributes = bound_attributes
 
     @property
     def set_of_fds(self) -> list[FunctionalDependency]:
@@ -34,7 +35,8 @@ class SetOfFDs:
     def bound_attributes(self) -> set[str]:
         return self._bound_attributes
 
-    def set_bound_attributes(self, bound_attributes: set[str]) -> None:
+    @bound_attributes.setter
+    def bound_attributes(self, bound_attributes: set[str]) -> None:
         self._bound_attributes = bound_attributes
 
     def __repr__(self) -> str:
