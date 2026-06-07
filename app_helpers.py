@@ -248,7 +248,12 @@ def fd_graph_dot(data: dict) -> str:
             lines.append("    " + "; ".join(str(m) for m in members) + ";")
             lines.append("  }")
     for edge in data["edges"]:
-        lines.append(f"  {edge['source']} -> {edge['target']} [label={edge['order']}];")
+        label = (
+            f'[label="{edge["order"]}", color=black]'
+            if edge["order"] is not None
+            else "[style=dashed, color=grey]"
+        )
+        lines.append(f"  {edge['source']} -> {edge['target']} {label};")
     lines.append("}")
     return "\n".join(lines)
 
@@ -268,7 +273,12 @@ def scc_order_dot(data: dict) -> str:
         cyclic = ' color="#d1495b"' if len(node["members"]) > 1 else ""
         lines.append(f'  {i} [label="{safe}"{cyclic}];')
     for edge in so["edges"]:
-        lines.append(f"  {edge['source']} -> {edge['target']} [label={edge['order']}];")
+        label = (
+            f'[label="{edge["order"]}", color=black]'
+            if edge["order"] != ""
+            else "[style=dashed, color=grey]"
+        )
+        lines.append(f"  {edge['source']} -> {edge['target']} {label};")
     lines.append("}")
     return "\n".join(lines)
 

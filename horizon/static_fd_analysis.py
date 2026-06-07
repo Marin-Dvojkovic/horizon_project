@@ -311,12 +311,22 @@ class FDGraph:
         comps: ig.VertexClustering = self._components
         scc_g: Graph = self._scc_g
 
-        nodes: list[dict] = [{"id": v.index, "label": v["name"]} for v in g.vs]
+        nodes: list[dict] = [
+            {
+                "id": v.index,
+                "label": ", ".join(v["name"])
+                if isinstance(v["name"], tuple)
+                else v["name"],
+            }
+            for v in g.vs
+        ]
         edges: list[dict] = [
             {
                 "source": e.source,
                 "target": e.target,
-                "order": self._set_of_fds[e["fd_index"]].order,
+                "order": self._set_of_fds[e["fd_index"]].order
+                if e["fd_index"] is not None
+                else None,
             }
             for e in g.es
         ]
@@ -324,7 +334,7 @@ class FDGraph:
         scc_nodes: list[dict] = [
             {
                 "members": [g.vs.find(name=attribute).index for attribute in v["name"]],
-                "label": ", ".join(v["name"]),
+                "label": ", ".join([str(name) for name in v["name"]]),
             }
             for v in scc_g.vs
         ]
@@ -332,7 +342,13 @@ class FDGraph:
             {
                 "source": e.source,
                 "target": e.target,
-                "order": self._set_of_fds[e["fd_index"]].order,
+                "order": ", ".join(
+                    [
+                        str(self._set_of_fds[fd_index].order)
+                        for fd_index in e["fd_index"]
+                        if fd_index is not None
+                    ]
+                ),
             }
             for e in scc_g.es
         ]
