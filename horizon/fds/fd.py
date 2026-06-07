@@ -1,10 +1,15 @@
 class FunctionalDependency:
-    def __init__(self, lhs: tuple | list | str, rhs: str) -> None:
+    _order: int | None
+
+    def __init__(
+        self, lhs: tuple | list | str, rhs: str, order: int | None = None
+    ) -> None:
         if isinstance(lhs, str):
             self._lhs = (lhs,)
         else:
             self._lhs = tuple(lhs)
         self._rhs = rhs
+        self._order = order
 
     @property
     def lhs(self) -> str | tuple:
@@ -15,6 +20,14 @@ class FunctionalDependency:
     @property
     def rhs(self) -> str:
         return self._rhs
+
+    @property
+    def order(self) -> int | None:
+        return self._order
+
+    @order.setter
+    def order(self, order: int) -> None:
+        self._order = order
 
     def __repr__(self) -> str:
         lhs_str = ", ".join(self._lhs)
