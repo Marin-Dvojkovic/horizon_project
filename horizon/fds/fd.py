@@ -1,7 +1,9 @@
 class FunctionalDependency:
-    _order: int
+    _order: int | None
 
-    def __init__(self, lhs: tuple | list | str, rhs: str, order: int = 0) -> None:
+    def __init__(
+        self, lhs: tuple | list | str, rhs: str, order: int | None = None
+    ) -> None:
         if isinstance(lhs, str):
             self._lhs = (lhs,)
         else:
@@ -20,7 +22,7 @@ class FunctionalDependency:
         return self._rhs
 
     @property
-    def order(self) -> int:
+    def order(self) -> int | None:
         return self._order
 
     @order.setter

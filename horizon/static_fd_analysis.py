@@ -69,7 +69,7 @@ class FDGraph:
             combine_vertices={
                 "name": lambda names: names,
             },
-            combine_edges={"fd_index": "first"},
+            combine_edges={"fd_index": lambda fd_indices: fd_indices},
         )
 
         logger.info(
@@ -127,10 +127,12 @@ class FDGraph:
             vertex_color="green",
             vertex_label=self._scc_g.vs["name"],
             vertex_label_dist=1.5,
-            # edge_label=scc_g.es["fd_index"],
             edge_label=[
-                self._set_of_fds[fd_index].order if fd_index is not None else None
-                for fd_index in self._scc_g.es["fd_index"]
+                [
+                    self._set_of_fds[fd_index].order if fd_index is not None else None
+                    for fd_index in fd_indices
+                ]
+                for fd_indices in self._scc_g.es["fd_index"]
             ],
         )
 
@@ -140,7 +142,7 @@ class FDGraph:
 
     # Implements Hierholzer's linear time algorithm for constructing an Eulerian cycle/tour
     def order_subg(
-        self, sub_g: Graph, order_counter: int
+        self, sub_g: Graph, start_v: int, order_counter: int
     ) -> list[FunctionalDependency]:
         sub_order: list[FunctionalDependency] = []
 
@@ -158,27 +160,24 @@ class FDGraph:
                 "Not possible to find a Eulerian cycle/tour and therefore not possible to order FDs."
             )
 
-        # Pick start vertex
-        start_v: int | None = 0
-
         if len(uneven_vertices) == 2:
             # Check requirements for Eulerian tour
-            start_v = next(
+            tour_start_v: int | None = next(
                 (i for i in uneven_vertices if out_degrees[i] == in_degrees[i] + 1),
                 None,
             )
-            end_v: int | None = next(
+            tour_end_v: int | None = next(
                 (i for i in uneven_vertices if in_degrees[i] == out_degrees[i] + 1),
                 None,
             )
-            if start_v is None or end_v is None:
+            if tour_start_v != start_v or tour_end_v is None:
                 raise RuntimeError(
                     "Not possible to find a Eulerian tour and therefore not possible to order FDs."
                 )
             # Add artificial edge from end to start, in order to compute Eulerian cycle
-            sub_g.add_edge(end_v, start_v)
-            out_degrees[end_v] += 1
-            in_degrees[start_v] += 1
+            sub_g.add_edge(tour_end_v, tour_start_v)
+            out_degrees[tour_end_v] += 1
+            in_degrees[tour_start_v] += 1
 
         traversed_edge_count: list[int] = [0 for i in range(n)]
         visited: list[bool] = [True if i == start_v else False for i in range(n)]
@@ -254,8 +253,15 @@ class FDGraph:
                     self._g.vs.select(name_in=component_v["name"]),
                     implementation="create_from_scratch",
                 )
+                # Start with last seen vertex, if possible
+                start_index: int = (
+                    sub_g.vs.find(name=ordered_fds[-1].rhs).index
+                    if len(ordered_fds) > 0
+                    and len(sub_g.vs.select(name=ordered_fds[-1].rhs)) == 1
+                    else 0
+                )
                 sub_order: list[FunctionalDependency] = self.order_subg(
-                    sub_g, order_counter
+                    sub_g, start_index, order_counter
                 )
                 ordered_fds += sub_order
                 order_counter += len(sub_order)
@@ -266,9 +272,10 @@ class FDGraph:
                 edge: ig.Edge = component_g.es.find(
                     _source=component_v, _target=next_vertex
                 )
-                fd_index: int | None = edge["fd_index"]
-                # Skip edges which represent multiple LHS attributes
-                if fd_index is not None:
+                for fd_index in edge["fd_index"]:
+                    # Skip edges which represent multiple LHS attributes
+                    if fd_index is None:
+                        continue
                     # Add order to FD and append to sub-component order
                     self._set_of_fds[fd_index].order = order_counter
                     ordered_fds.append(self._set_of_fds[fd_index])
@@ -304,8 +311,8 @@ class FDGraph:
         comps: ig.VertexClustering = self._components
         scc_g: Graph = self._scc_g
 
-        nodes = [{"id": v.index, "label": v["name"]} for v in g.vs]
-        edges = [
+        nodes: list[dict] = [{"id": v.index, "label": v["name"]} for v in g.vs]
+        edges: list[dict] = [
             {
                 "source": e.source,
                 "target": e.target,
@@ -313,15 +320,15 @@ class FDGraph:
             }
             for e in g.es
         ]
-        sccs = [list(members) for members in comps]
-        scc_nodes = [
+        sccs: list[list] = [list(members) for members in comps]
+        scc_nodes: list[dict] = [
             {
                 "members": [g.vs.find(name=attribute).index for attribute in v["name"]],
                 "label": ", ".join(v["name"]),
             }
             for v in scc_g.vs
         ]
-        scc_edges = [
+        scc_edges: list[dict] = [
             {
                 "source": e.source,
                 "target": e.target,
