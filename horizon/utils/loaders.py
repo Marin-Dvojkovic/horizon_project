@@ -1,3 +1,4 @@
+import re
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -53,15 +54,19 @@ class TXTFDLoader(FDLoader):
         )
 
     def load_column_names(self, columns_csv_path: Path) -> list[str]:
-        # Read only the header (no rows needed) using Polars
+        # Read only the header (no rows needed)
         try:
             df: pl.DataFrame = pl.read_csv(str(columns_csv_path), n_rows=0)
-            return list(df.columns)
+            # Remove data types in brackets
+            return [re.sub(r"\(.*?\)", "", column_name) for column_name in df.columns]
         except Exception:
             # Fallback: try reading full file then columns
             try:
                 df: pl.DataFrame = pl.read_csv(str(columns_csv_path))
-                return list(df.columns)
+                # Remove data types in brackets
+                return [
+                    re.sub(r"\(.*?\)", "", column_name) for column_name in df.columns
+                ]
             except Exception:
                 return []
 
