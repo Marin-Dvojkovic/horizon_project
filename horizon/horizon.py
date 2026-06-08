@@ -51,19 +51,21 @@ parser.add_argument(
 )
 
 
-def load_fds(
-    fds_csv_path: Path, lhs_column_name: str = "from", rhs_column_name: str = "to"
-) -> SetOfFDs:
-    logger.debug(f"Loading FDs from: {fds_csv_path}")
-    # Check fds.csv path
-    if not fds_csv_path.exists:
-        logger.error(f"CSV file {str(fds_csv_path)} does not exist.")
-        raise ValueError(f"CSV file {str(fds_csv_path)} does not exist.")
-
-    # Use CSV data loader to read input FDs from file
-    fds: SetOfFDs = utils.loaders.get_fds(
-        fds_csv_path, utils.loaders.CSVFDLoader(lhs_column_name, rhs_column_name)
+def load_fds(dataset_dir: Path, data_csv_path: Path) -> SetOfFDs:
+    # Check for fds.csv or fds.txt (prefer .csv)
+    fd_files: list[Path] = sorted(
+        list(dataset_dir.glob("fds.*")),
+        key=lambda path: path.suffix.lower() != ".csv",
     )
+    if len(fd_files) < 1:
+        logger.error(f"No FD file found under {str(dataset_dir)}")
+        raise ValueError(f"No FD file found under {str(dataset_dir)}")
+
+    fds_path: Path = fd_files[0]
+    logger.debug(f"Loading FDs from: {fds_path}")
+
+    # Use data loader to read input FDs from file
+    fds: SetOfFDs = utils.loaders.get_fds(fds_path, data_csv_path)
     logger.info(f"Loaded {len(fds)} functional dependencies")
     return fds
 
@@ -71,8 +73,8 @@ def load_fds(
 def load_data(data_csv_path: Path) -> pl.DataFrame:
     # Check csv path
     if not data_csv_path.exists:
-        logger.error(f"CSV file {str(data_csv_path)} does not exist.")
-        raise ValueError(f"CSV file {str(data_csv_path)} does not exist.")
+        logger.error(f"CSV file {str(data_csv_path)} does not exist")
+        raise ValueError(f"CSV file {str(data_csv_path)} does not exist")
 
     # Load dirty data
     logger.info("Loading dirty data...")
@@ -169,7 +171,7 @@ def repair_dirty_data(
     return columns, pattern_expressions
 
 
-def main(dataset_dir: Path, output_dir: Path) -> None:
+def main(dataset_dir: Path, output_dir: Path, dirty_data_file: str) -> None:
     dataset_name: str = dataset_dir.name
 
     logger.info(
@@ -178,13 +180,13 @@ def main(dataset_dir: Path, output_dir: Path) -> None:
 
     # Verify data path
     fds_path: Path = dataset_dir / "fds.csv"
-    dirty_data_path: Path = dataset_dir / args.dirty_data_file
+    dirty_data_path: Path = dataset_dir / dirty_data_file
     logger.debug(f"FD path: {fds_path}")
     logger.debug(f"Dirty data path: {dirty_data_path}")
 
     # Load FDs
     logger.info("Loading functional dependencies...")
-    set_of_fds: SetOfFDs = load_fds(fds_path)
+    set_of_fds: SetOfFDs = load_fds(dataset_dir, dirty_data_path)
 
     # Get traversal order
     logger.info("Computing traversal order for FDs...")
@@ -231,7 +233,7 @@ if __name__ == "__main__":
     logger.info(f"Horizon pipeline started with arguments: {vars(args)}")
 
     try:
-        main(Path(args.dataset_dir), Path(args.output_dir))
+        main(Path(args.dataset_dir), Path(args.output_dir), args.dirty_data_file)
         logger.info("Pipeline execution completed successfully")
     except Exception as e:
         logger.error(f"Pipeline execution failed: {str(e)}", exc_info=True)

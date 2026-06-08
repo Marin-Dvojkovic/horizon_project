@@ -64,16 +64,19 @@ def discover_datasets() -> list[str]:
     found = [
         d.name
         for d in sorted(DATASETS.iterdir())
-        if (d / "clean.csv").exists() and (d / "injected").is_dir()
+        if (d / "clean.csv").exists()
+        and ((d / "injected").is_dir() or (d / "dirty.csv").exists)
     ]
     # surface the paper-faithful benchmark first
     found.sort(key=lambda n: (n != "hospital_170k", n))
     return found
 
 
-def injected_options(dataset: str) -> dict[str, list[int]]:
+def injected_options(dataset: str) -> dict[str, list[int | None]]:
     """Available {errortype: [rates]} from the files actually on disk."""
     inj = DATASETS / dataset / "injected"
+    if not inj.exists():
+        return {"e1": [None]}
     out: dict[str, list[int]] = {}
     for f in sorted(inj.glob("*_r*.csv")):
         etype, _, rate = f.stem.partition("_r")
@@ -88,7 +91,11 @@ def injected_options(dataset: str) -> dict[str, list[int]]:
 
 
 def run_pipeline(
-    dataset: str, errortype: str, rate: int, on_stage=None, on_repair_progress=None
+    dataset: str,
+    errortype: str,
+    rate: int | None,
+    on_stage=None,
+    on_repair_progress=None,
 ) -> dict:
     """Run the real Horizon pipeline end-to-end and score it against clean.csv.
 
@@ -112,11 +119,13 @@ def run_pipeline(
 
     from eval.effectiveness_eval import evaluate_repair
 
-    ds_dir = DATASETS / dataset
-    fds_path = ds_dir / "fds.csv"
-    clean_path = ds_dir / "clean.csv"
-    dirty_path = ds_dir / "injected" / f"{errortype}_r{rate:02d}.csv"
-    output_dir = REPO / "output"
+    ds_dir: Path = DATASETS / dataset
+    fds_path: Path = ds_dir / "fds.csv"
+    clean_path: Path = ds_dir / "clean.csv"
+    dirty_path: Path = ds_dir / "dirty.csv"
+    if rate is not None:
+        dirty_path = ds_dir / "injected" / f"{errortype}_r{rate:02d}.csv"
+    output_dir: Path = REPO / "output"
     output_dir.mkdir(exist_ok=True)
 
     TOTAL_STAGES = 6
@@ -129,7 +138,7 @@ def run_pipeline(
 
     start = time.perf_counter()
 
-    set_of_fds = pipe.load_fds(fds_path)
+    set_of_fds = pipe.load_fds(ds_dir, dirty_path)
     stage(f"Loaded {len(set_of_fds)} functional dependencies")
 
     ordered_fds = get_ordered_fds(set_of_fds, dataset, output_dir)
