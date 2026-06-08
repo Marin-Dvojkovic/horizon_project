@@ -153,11 +153,17 @@ def load_table(source: str | Path, columns: list[str] | None = None) -> pl.DataF
     if scanner is None:
         logger.error(f"No loader registered for extension '{ext}'")
         raise ValueError(f"No loader registered for extension '{ext}'")
-    lf = scanner(source)
-    lf = lf.rename({c: c.strip().lower() for c in lf.collect_schema().names()})
+    lf: pl.LazyFrame = scanner(source)
+    # Remove data types in brackets
+    lf = lf.rename(
+        {
+            c: re.sub(r"\(.*?\)", "", c.strip().lower())
+            for c in lf.collect_schema().names()
+        }
+    )
     if columns is not None:
-        wanted = [c.strip().lower() for c in columns]
-        missing = [c for c in wanted if c not in lf.collect_schema().names()]
+        wanted: list[str] = [c.strip().lower() for c in columns]
+        missing: list[str] = [c for c in wanted if c not in lf.collect_schema().names()]
         if missing:
             raise ValueError(f"columns not found: {missing}")
         lf = lf.select(wanted)

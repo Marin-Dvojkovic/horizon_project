@@ -50,7 +50,10 @@ st.set_page_config(page_title="Horizon — FD Data Cleaning", layout="wide")
 st.title("Horizon — Dependency-driven Data Cleaning")
 st.caption("A from-scratch reimplementation of Horizon (Rezig et al., VLDB 2021).")
 
-ERROR_TYPE_NAMES = {"e1": "Type 1 — active-domain errors", "e2": "Type 2 — incl. outliers"}
+ERROR_TYPE_NAMES = {
+    "e1": "Type 1 — active-domain errors",
+    "e2": "Type 2 — incl. outliers",
+}
 
 
 def error_type_label(et: str) -> str:
@@ -59,7 +62,9 @@ def error_type_label(et: str) -> str:
 
 datasets = h.discover_datasets()
 if not datasets:
-    st.error("No Category-A datasets found under `datasets/` (need clean.csv + injected/).")
+    st.error(
+        "No Category-A datasets found under `datasets/` (need clean.csv + injected/ or clean.csv + dirty.csv)."
+    )
     st.stop()
 
 # ----- sidebar controls -------------------------------------------------------
@@ -84,7 +89,11 @@ with st.sidebar:
         if len(rates) > 1
         else rates[0]
     )
-    if len(rates) == 1:
+    if rate is None:
+        st.caption(
+            "Only the default error rate is available (no information about rate)."
+        )
+    elif len(rates) == 1:
         st.caption(f"Only a {rate}% file is available for this error type.")
     run = st.button("▶ Run Horizon", type="primary", use_container_width=True)
 
