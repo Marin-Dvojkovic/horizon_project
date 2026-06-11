@@ -170,54 +170,69 @@ class FDPatternGraph:
 
     def calculate_edge_qualities(self):
         """
-        Berechnet Quality in zwei Schritten analog zum Java-Code:
-
-        Schritt 1: VConfidence pro Knoten:
-            VConf(node) = Σ support(matching incoming edge) / Anzahl eingehender Kanten
-
-        Schritt 2: EConfidence pro Kante (updated Support):
-            EConf(u → v) = (VConf(u) + VConf(v)) / 2
-            → wird als neue 'quality' auf der Kante gespeichert
-        """
-        # Schritt 1: VConfidence für jeden Knoten
-        vconfidence: dict[str, float] = {}
-
-        for node in self.graph.nodes():
-            incoming_edges = list(self.graph.in_edges(node, data=True))
-            outgoing_edges = list(self.graph.out_edges(node, data=True))
-
-            if not incoming_edges and not outgoing_edges:
-                vconfidence[node] = 0.0
-                logger.debug(f"[VConf] '{node}': isolated node, vconf=0.0")
-                continue
+        Calculate vertex and edge confidence matching Java Horizon algorithm.
+        
+        Step 1 - Vertex Confidence (VConfidence):
+            For each node, collect supports from ALL paths that reach it
+            (not just direct incoming edges - includes transitive paths)
+            VConf(node) = avg(supports of all edges in influence set)
             
-            if not incoming_edges:
-                # Root-Knoten (bound attribute): VConf = Avg outgoing support
-                support_sum = sum(data["support"] for _, _, data in outgoing_edges)
-                vconfidence[node] = support_sum
+        Step 2 - Edge Confidence (EConfidence):
+            For each edge u→v:
+            quality(u→v) = (vconfidence[u] + vconfidence[v]) / 2
+        """
+        # Step 1: Find all nodes with paths to each node (transitive incoming)
+        def get_all_predecessors(node: str) -> set[str]:
+            """Get all nodes that have a path to this node."""
+            all_preds = set()
+            visited = set()
+            stack = [node]
+            
+            while stack:
+                current = stack.pop()
+                if current in visited:
+                    continue
+                visited.add(current)
+                
+                for pred in self.graph.predecessors(current):
+                    if pred not in all_preds:
+                        all_preds.add(pred)
+                        stack.append(pred)
+            
+            return all_preds
+        
+        vconfidence: dict[str, float] = {}
+        
+        for node in self.graph.nodes():
+            # Collect all edges that can reach this node (from all transitive predecessors)
+            reachable_supports: list[float] = []
+            
+            all_predecessors = get_all_predecessors(node)
+            
+            # Collect supports from edges originating from any predecessor
+            for pred in all_predecessors:
+                if self.graph.has_edge(pred, node):
+                    reachable_supports.append(self.graph[pred][node]["support"])
+            
+            if reachable_supports:
+                vconfidence[node] = sum(reachable_supports)
                 logger.debug(
-                    f"[VConf] '{node}': root node, "
-                    f"avg outgoing support = {support_sum:.4f} / {len(outgoing_edges)} = {vconfidence[node]:.4f}"
+                    f"[VConf] '{node}': "
+                    f"avg({len(reachable_supports)} influences from {len(all_predecessors)} predecessors) = {vconfidence[node]:.4f}"
                 )
-                continue
+            else:
+                vconfidence[node] = 0.0
+                logger.debug(f"[VConf] '{node}': no incoming influences (root node), vconf=0.0")
 
-            support_sum = sum(data["support"] for _, _, data in incoming_edges)
-            vconfidence[node] = support_sum 
-            logger.debug(
-                f"[VConf] '{node}': "
-                f"vconf = {support_sum:.4f} / {len(incoming_edges)} = {vconfidence[node]:.4f}"
-            )
-
-        # Schritt 2: EConfidence pro Kante → quality
+        # Step 2: Calculate edge quality as average of involved vertex confidences
         for u, v, data in self.graph.edges(data=True):
             vconf_u = vconfidence[u]
             vconf_v = vconfidence[v]
-            quality = (vconf_u + vconf_v) / 2
+            quality = vconf_u + vconf_v
 
             self.graph[u][v]["quality"] = quality
             logger.debug(
                 f"[EConf] '{u}' → '{v}': "
-                f"vconf(u)={vconf_u:.4f}, vconf(v)={vconf_v:.4f}, "
                 f"quality = ({vconf_u:.4f} + {vconf_v:.4f}) / 2 = {quality:.4f}"
             )
 
