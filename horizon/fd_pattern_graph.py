@@ -80,7 +80,7 @@ class FDPatternGraph:
 
         end: float = time.time()
         logger.info(
-            f"FDPatternGraph initialization completed in {(end - start):.2f}s. Graph has {self.graph.number_of_nodes()} nodes and {self.graph.number_of_edges()} edges"
+            f"FDPatternGraph initialization completed in {(end - start):.2f}s. Graph has {self.graph.number_of_nodes()} nodes and {self.graph.number_of_edges()} edges. Edge qualities calculated."
         )
 
     def _cell_node_id(self, col_name: str, value) -> str:
@@ -125,11 +125,15 @@ class FDPatternGraph:
         G = nx.DiGraph()
 
         # Add nodes for each unique value
-        G.add_nodes_from(
+        nodes = [
             (self._cell_node_id(col_name, value), {"column": col_name, "value": value})
             for col_name in self._fd_columns
             for value in self.get_unique_values(col_name)
-        )
+        ]
+        G.add_nodes_from(nodes)
+        logger.debug(f"[Graph] Added {len(nodes)} nodes:")
+        for node_id, attrs in nodes:
+            logger.debug(f"[Graph]   Node '{node_id}' — column='{attrs['column']}', value='{attrs['value']}'")
 
         # Create edge list for each FD and each row (including duplicates)
         edges_list: list[tuple] = [
@@ -140,88 +144,82 @@ class FDPatternGraph:
             for from_col, to_col in self._set_of_fds.as_tuple_list()
             for row_idx in range(self._number_of_tuples)
         ]
+        logger.debug(f"[Graph] Raw edge list ({len(edges_list)} entries, including duplicates):")
+        for u, v in edges_list:
+            logger.debug(f"[Graph]   {u} → {v}")
 
         # Add unique edges to graph and calculate support with counter
-        # Nodes are added automatically
-        G.add_edges_from(
-            [
-                (
-                    *edge_tuple,
-                    {
-                        "support": support / self._number_of_tuples,
-                        "quality": support / self._number_of_tuples,
-                    },
-                )
-                for edge_tuple, support in Counter(edges_list).items()
-            ],
-        )
+        edge_counts = Counter(edges_list)
+        logger.debug(f"[Graph] Unique edges ({len(edge_counts)}) with support:")
+        unique_edges = []
+        for edge_tuple, count in edge_counts.items():
+            support = count / self._number_of_tuples
+            unique_edges.append((*edge_tuple, {"support": support, "quality": support}))
+            logger.debug(
+                f"[Graph]   {edge_tuple[0]} → {edge_tuple[1]}: "
+                f"count={count}, total={self._number_of_tuples}, "
+                f"support={count}/{self._number_of_tuples}={support:.4f}"
+            )
+
+        G.add_edges_from(unique_edges)
 
         logger.debug(
-            f"Graph construction completed: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges"
+            f"[Graph] Construction completed: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges"
         )
         return G
 
     def calculate_edge_qualities(self):
         """
-        Calculate quality for each edge in the graph and store as edge attributes.
+        Berechnet Quality in zwei Schritten analog zum Java-Code:
 
-        Quality = (support of edge + sum of supports of reachable edges) / total edges visited in DFS
+        Schritt 1: VConfidence pro Knoten:
+            VConf(node) = Σ support(matching incoming edge) / Anzahl eingehender Kanten
 
-        The quality is stored as a 'quality' attribute on each edge.
+        Schritt 2: EConfidence pro Kante (updated Support):
+            EConf(u → v) = (VConf(u) + VConf(v)) / 2
+            → wird als neue 'quality' auf der Kante gespeichert
         """
-        for source in self._set_of_fds.bound_attributes:
-            source_nodes = [
-                (u, v, d)
-                for u, v, d in self.graph.edges(data=True)
-                if self.graph.nodes[u]["column"] == source
-            ]
-            visited_edges: set = set()
-            for from_node, to_node, edge_data in source_nodes:
-                # Start DFS from the target node of this edge
-                total_support_sum = 0
-                edges_visited = 0
+        # Schritt 1: VConfidence für jeden Knoten
+        vconfidence: dict[str, float] = {}
 
-                # DFS stack: (current_node, path_to_here)
-                stack = [
-                    (to_node, {(from_node, to_node)})
-                ]  # Start from target node, mark this edge as visited
+        for node in self.graph.nodes():
+            incoming_edges = list(self.graph.in_edges(node, data=True))
+            outgoing_edges = list(self.graph.out_edges(node, data=True))
 
-                while stack:
-                    current_node, path = stack.pop()
+            if not incoming_edges and not outgoing_edges:
+                vconfidence[node] = 0.0
+                logger.debug(f"[VConf] '{node}': isolated node, vconf=0.0")
+                continue
+            
+            if not incoming_edges:
+                # Root-Knoten (bound attribute): VConf = Avg outgoing support
+                support_sum = sum(data["support"] for _, _, data in outgoing_edges)
+                vconfidence[node] = support_sum
+                logger.debug(
+                    f"[VConf] '{node}': root node, "
+                    f"avg outgoing support = {support_sum:.4f} / {len(outgoing_edges)} = {vconfidence[node]:.4f}"
+                )
+                continue
 
-                    # Explore all outgoing edges from current node
-                    for neighbor in self.graph.successors(current_node):
-                        edge = (current_node, neighbor)
+            support_sum = sum(data["support"] for _, _, data in incoming_edges)
+            vconfidence[node] = support_sum 
+            logger.debug(
+                f"[VConf] '{node}': "
+                f"vconf = {support_sum:.4f} / {len(incoming_edges)} = {vconfidence[node]:.4f}"
+            )
 
-                        if edge in visited_edges:
-                            continue
+        # Schritt 2: EConfidence pro Kante → quality
+        for u, v, data in self.graph.edges(data=True):
+            vconf_u = vconfidence[u]
+            vconf_v = vconfidence[v]
+            quality = (vconf_u + vconf_v) / 2
 
-                        if edge not in path:  # Avoid cycles
-                            edge_support = self.graph[current_node][neighbor]["support"]
-                            total_support_sum += edge_support
-                            edges_visited += 1
-                            visited_edges.add(edge)
-
-                            # Continue DFS
-                            new_path = path | {edge}
-                            stack.append((neighbor, new_path))
-                        else:
-                            edge_support = self.graph[current_node][neighbor]["support"]
-                            total_support_sum += edge_support
-                            edges_visited += 1
-
-                # Calculate quality for this edge
-                first_edge_support = edge_data["support"]
-                if edges_visited > 0:
-                    # quality = (edge_support + total_support_sum) / (edges_visited + 1)
-                    quality = (first_edge_support + total_support_sum) / (
-                        edges_visited + 1
-                    )
-                else:
-                    quality = first_edge_support  # If no other edges reachable, quality = support
-
-                # Store quality as edge attribute
-                self.graph[from_node][to_node]["quality"] = quality
+            self.graph[u][v]["quality"] = quality
+            logger.debug(
+                f"[EConf] '{u}' → '{v}': "
+                f"vconf(u)={vconf_u:.4f}, vconf(v)={vconf_v:.4f}, "
+                f"quality = ({vconf_u:.4f} + {vconf_v:.4f}) / 2 = {quality:.4f}"
+            )
 
     def get_edge_quality(self, from_node: str, to_node: str) -> float:
         """
