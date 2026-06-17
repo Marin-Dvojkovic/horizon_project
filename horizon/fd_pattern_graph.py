@@ -179,13 +179,12 @@ class FDPatternGraph:
         for from_node, to_node, edge_data in self.graph.edges(data=True):
             visited_edges: set = set()
             # Start DFS from the target node of this edge
-            total_support_sum = edge_data["support"]
+            total_support_sum = 0
             edges_visited = 0
 
             start_edge = (from_node, to_node)
             # DFS stack: (current_node, path_to_here)
             stack = [start_edge]
-            visited_edges.add(start_edge)
 
             while stack:
                 current_edge = stack.pop()
@@ -195,12 +194,14 @@ class FDPatternGraph:
                     next_edge = (current_edge[1], neighbor)
                     if next_edge not in visited_edges:
                         stack.append(next_edge)
-
                 
-                edge_support = self.graph[current_edge[1]][neighbor]["support"]
+                logger.debug(f"current stack for {from_node} - {to_node}: {stack}")
+                
+                edge_support = self.graph[current_edge[0]][current_edge[1]]["support"]
                 total_support_sum += edge_support
                 edges_visited += 1
                 visited_edges.add(current_edge)
+                
 
             if edges_visited > 0:
                 # quality = (edge_support + total_support_sum) / (edges_visited + 1)
@@ -210,6 +211,7 @@ class FDPatternGraph:
 
             # Store quality as edge attribute
             self.graph[from_node][to_node]["quality"] = quality
+            logger.debug(f"added quality: {quality} for {from_node} -> {to_node}")
 
     def get_edge_quality(self, from_node: str, to_node: str) -> float:
         """
