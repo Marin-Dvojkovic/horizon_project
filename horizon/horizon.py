@@ -132,7 +132,7 @@ def repair_dirty_data(
     dirty_data: pl.DataFrame,
     ordered_fds: list[list[FunctionalDependency]],
     fd_pattern_graph: FDPatternGraph,
-) -> tuple[dict[str, list[str]], list[PatternExpression]]:
+) -> tuple[pl.DataFrame, list[PatternExpression]]:
     # Compute repairs for dirty data
     pattern_expressions: list[PatternExpression] = []
     repair_table: dict[FunctionalDependency, dict[str, str]] = {
@@ -168,7 +168,10 @@ def repair_dirty_data(
     logger.info(f"Tuple repair process completed in {elapsed_time:.2f}s")
     logger.debug(f"Repair table:\n{repair_table}")
 
-    return columns, pattern_expressions
+    # Rebuild the data frame from the repaired columns
+    cleaned_data: pl.DataFrame = pl.DataFrame(columns)
+
+    return cleaned_data, pattern_expressions
 
 
 def main(dataset_dir: Path, output_dir: Path, dirty_data_file: str) -> None:
@@ -200,7 +203,7 @@ def main(dataset_dir: Path, output_dir: Path, dirty_data_file: str) -> None:
 
     # Compute repairs for dirty data
     dirty_data: pl.DataFrame = load_data(dirty_data_path)
-    columns, pattern_expressions = repair_dirty_data(
+    cleaned_data, pattern_expressions = repair_dirty_data(
         dirty_data, ordered_fds, fd_pattern_graph
     )
 
@@ -209,8 +212,7 @@ def main(dataset_dir: Path, output_dir: Path, dirty_data_file: str) -> None:
         logger.info(f"Creating output directory under {output_dir}")
     output_dir.mkdir(exist_ok=True)
 
-    # Save cleaned data (rebuild the frame from the repaired columns)
-    cleaned_data: pl.DataFrame = pl.DataFrame(columns)
+    # Save cleaned data
     data_output_path: Path = output_dir / f"{dataset_name}_cleaned_data.csv"
     cleaned_data.write_csv(data_output_path)
     logger.info(f"Cleaned data saved to {data_output_path}")

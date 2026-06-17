@@ -167,14 +167,13 @@ def run_pipeline(
         hzn_logger.setLevel(logging.INFO)
         hzn_logger.addHandler(handler)
     try:
-        columns, pattern_expressions = pipe.repair_dirty_data(dirty, ordered_fds, graph)
+        cleaned, pattern_expressions = pipe.repair_dirty_data(dirty, ordered_fds, graph)
     finally:
         if handler:
             hzn_logger.removeHandler(handler)
             hzn_logger.setLevel(prev_level)
     stage(f"Repaired {len(dirty):,} tuples")
 
-    cleaned = pl.DataFrame(columns)
     clean = pl.read_csv(clean_path, infer_schema_length=0)
     clean = clean.rename({c: c.strip().lower() for c in clean.columns})
     metrics = evaluate_repair(clean, dirty, cleaned)
