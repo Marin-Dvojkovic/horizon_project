@@ -37,7 +37,7 @@ def setup_logging(
 
     # Get root logger
     logger = logging.getLogger("horizon")
-    logger.setLevel(log_level)
+    logger.setLevel(logging.DEBUG)
 
     # Remove existing handlers to avoid duplicates
     logger.handlers.clear()
@@ -52,13 +52,13 @@ def setup_logging(
     file_handler = logging.handlers.RotatingFileHandler(
         log_file, maxBytes=10485760, backupCount=5  # 10MB per file, keep 5 backups
     )
-    file_handler.setLevel(logging.DEBUG)
+    file_handler.setLevel(log_level)
     file_handler.setFormatter(log_format)
     logger.addHandler(file_handler)
 
     # Console handler (only logs INFO and above)
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(log_level)
+    console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(log_format)
     logger.addHandler(console_handler)
 
