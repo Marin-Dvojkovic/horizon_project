@@ -228,7 +228,7 @@ if __name__ == "__main__":
     args: argparse.Namespace = parser.parse_args()
 
     # Setup logging
-    setup_logging(log_level=getattr(logging, args.log_level))
+    setup_logging(log_level=getattr(logging, args.log_level.upper()))
 
     logger.info(f"Horizon pipeline started with arguments: {vars(args)}")
 

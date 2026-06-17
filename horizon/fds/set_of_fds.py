@@ -63,6 +63,9 @@ class SetOfFDs:
 
     def add_fd(self, fd: FunctionalDependency) -> None:
         self._set_of_fds.append(fd)
+        self._unique_attributes.update(
+            set(attribute for attribute in fd.get_attributes())
+        )
 
     def as_tuple_list(self) -> list[tuple]:
         return [fd.as_tuple() for fd in self._set_of_fds]

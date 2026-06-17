@@ -39,11 +39,8 @@ class FDPatternGraph:
             data_path: Path to the CSV file containing the data
             set_of_fds: Parsed set of functional dependencies
         """
-        self._set_of_fds = SetOfFDs(
-            [fd for fd in set_of_fds if not isinstance(fd.lhs, tuple)],
-            set_of_fds.bound_attributes,
-        )  # TODO: Support multiple attributes on LHS
-        self._fd_columns = self._set_of_fds.unique_attributes
+        self._set_of_fds = set_of_fds
+        self._fd_columns = set_of_fds.unique_attributes
 
         logger.info(
             f"Initializing FDPatternGraph with data: {data_path}, FDs: {str(self._set_of_fds)}"
@@ -134,22 +131,30 @@ class FDPatternGraph:
         # Create edge list for each FD and each row (including duplicates)
         edges_list: list[tuple] = [
             (
-                self._cell_node_id(from_col, self._data[row_idx, from_col]),
-                self._cell_node_id(to_col, self._data[row_idx, to_col]),
+                self._cell_node_id(str(fd.lhs), self._data[row_idx, fd.lhs]),
+                self._cell_node_id(fd.rhs, self._data[row_idx, fd.rhs]),
+                fd.cyclic,
+                fd.order,
             )
-            for from_col, to_col in self._set_of_fds.as_tuple_list()
+            for fd in self._set_of_fds
+            if not isinstance(fd.lhs, tuple)  # TODO: Support multiple attributes on LHS
             for row_idx in range(self._number_of_tuples)
         ]
 
         # Add unique edges to graph and calculate support with counter
-        # Nodes are added automatically
+        # Add back-edge and order properties
         G.add_edges_from(
             [
                 (
-                    *edge_tuple,
+                    edge_tuple[0],
+                    edge_tuple[1],
                     {
                         "support": support / self._number_of_tuples,
                         "quality": support / self._number_of_tuples,
+                        "back_edge": edge_tuple[2],
+                        "order": edge_tuple[3],
+                        "sum_support": 0,
+                        "n_reachable": 0,
                     },
                 )
                 for edge_tuple, support in Counter(edges_list).items()
@@ -169,59 +174,40 @@ class FDPatternGraph:
 
         The quality is stored as a 'quality' attribute on each edge.
         """
-        for source in self._set_of_fds.bound_attributes:
-            source_nodes = [
-                (u, v, d)
-                for u, v, d in self.graph.edges(data=True)
-                if self.graph.nodes[u]["column"] == source
-            ]
-            visited_edges: set = set()
-            for from_node, to_node, edge_data in source_nodes:
-                # Start DFS from the target node of this edge
-                total_support_sum = 0
-                edges_visited = 0
+        # Sort edges in reverse order: From bottom to top
+        sorted_edges = sorted(
+            self.graph.edges(data=True), key=lambda edge: edge[2]["order"]
+        )
+        sorted_edges.reverse()
 
-                # DFS stack: (current_node, path_to_here)
-                stack = [
-                    (to_node, {(from_node, to_node)})
-                ]  # Start from target node, mark this edge as visited
+        # Iterate over all edges and compute quality
+        for from_node, to_node, edge_data in sorted_edges:
+            # Skip back-edges
+            if edge_data["back_edge"]:
+                continue
+            # Sum over direct neighbors summed support to get reachable support
+            reachable_support: int = sum(
+                [
+                    self.graph[to_node][direct_neighbor]["sum_support"]
+                    for direct_neighbor in self.graph.successors(to_node)
+                    if not self.graph[to_node][direct_neighbor]["back_edge"]
+                ]
+            )
+            self.graph[from_node][to_node]["sum_support"] = (
+                edge_data["support"] + reachable_support
+            )
+            self.graph[from_node][to_node]["n_reachable"] = sum(
+                [
+                    self.graph[to_node][direct_neighbor]["n_reachable"] + 1
+                    for direct_neighbor in self.graph.successors(to_node)
+                    if not self.graph[to_node][direct_neighbor]["back_edge"]
+                ]
+            )
+            self.graph[from_node][to_node]["quality"] = edge_data["sum_support"] / (
+                edge_data["n_reachable"] + 1
+            )
 
-                while stack:
-                    current_node, path = stack.pop()
-
-                    # Explore all outgoing edges from current node
-                    for neighbor in self.graph.successors(current_node):
-                        edge = (current_node, neighbor)
-
-                        if edge in visited_edges:
-                            continue
-
-                        if edge not in path:  # Avoid cycles
-                            edge_support = self.graph[current_node][neighbor]["support"]
-                            total_support_sum += edge_support
-                            edges_visited += 1
-                            visited_edges.add(edge)
-
-                            # Continue DFS
-                            new_path = path | {edge}
-                            stack.append((neighbor, new_path))
-                        else:
-                            edge_support = self.graph[current_node][neighbor]["support"]
-                            total_support_sum += edge_support
-                            edges_visited += 1
-
-                # Calculate quality for this edge
-                first_edge_support = edge_data["support"]
-                if edges_visited > 0:
-                    # quality = (edge_support + total_support_sum) / (edges_visited + 1)
-                    quality = (first_edge_support + total_support_sum) / (
-                        edges_visited + 1
-                    )
-                else:
-                    quality = first_edge_support  # If no other edges reachable, quality = support
-
-                # Store quality as edge attribute
-                self.graph[from_node][to_node]["quality"] = quality
+        # TODO: Compute quality for back-edges
 
     def get_edge_quality(self, from_node: str, to_node: str) -> float:
         """
