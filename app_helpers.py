@@ -167,7 +167,9 @@ def run_pipeline(
         hzn_logger.setLevel(logging.INFO)
         hzn_logger.addHandler(handler)
     try:
-        cleaned, pattern_expressions = pipe.repair_dirty_data(dirty, ordered_fds, graph)
+        cleaned, pattern_expressions = pipe.repair_dirty_data(
+            dirty_path, ordered_fds, graph
+        )
     finally:
         if handler:
             hzn_logger.removeHandler(handler)

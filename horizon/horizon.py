@@ -129,7 +129,7 @@ def repair_tuple(
 
 
 def repair_dirty_data(
-    dirty_data: pl.DataFrame,
+    dirty_data_path: Path,
     ordered_fds: list[list[FunctionalDependency]],
     fd_pattern_graph: FDPatternGraph,
 ) -> tuple[pl.DataFrame, list[PatternExpression]]:
@@ -143,8 +143,11 @@ def repair_dirty_data(
     # and especially df[t, col] = val writes rebuild whole Arrow columns
     # (O(n) each), making the loop O(n^2). dict-of-lists makes them O(1);
     # rebuild the frame once at the end.
+    dirty_data: pl.DataFrame = load_data(dirty_data_path)
     columns: dict[str, list[str]] = dirty_data.to_dict(as_series=False)
     n_tuples: int = len(dirty_data)
+    # Clear df to save memory, columns is used to read the data
+    dirty_data.clear()
 
     logger.info("Starting tuple repair process...")
     start: float = time.time()
@@ -202,9 +205,8 @@ def main(dataset_dir: Path, output_dir: Path, dirty_data_file: str) -> None:
     fd_pattern_graph: FDPatternGraph = FDPatternGraph(str(dirty_data_path), set_of_fds)
 
     # Compute repairs for dirty data
-    dirty_data: pl.DataFrame = load_data(dirty_data_path)
     cleaned_data, pattern_expressions = repair_dirty_data(
-        dirty_data, ordered_fds, fd_pattern_graph
+        dirty_data_path, ordered_fds, fd_pattern_graph
     )
 
     # Create output directory

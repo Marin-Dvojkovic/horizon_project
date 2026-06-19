@@ -58,3 +58,7 @@ bart/*_changes.csv
 
 # Tests
 tests/output/*
+
+# Docs
+docs/html
+docs/latex

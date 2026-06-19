@@ -13,6 +13,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import networkx as nx
+import polars as pl
 import utils.loaders
 from fds.set_of_fds import SetOfFDs
 from utils.logging_config import get_logger
@@ -31,6 +32,9 @@ class FDPatternGraph:
     same value in the same column will reference the same node.
     """
 
+    # Class variable
+    graph: nx.DiGraph
+
     def __init__(self, data_path: str, set_of_fds: SetOfFDs):
         """
         Initialize the FDPatternGraph.
@@ -39,26 +43,22 @@ class FDPatternGraph:
             data_path: Path to the CSV file containing the data
             set_of_fds: Parsed set of functional dependencies
         """
-        self._set_of_fds = set_of_fds
-        self._fd_columns = set_of_fds.unique_attributes
-
         logger.info(
-            f"Initializing FDPatternGraph with data: {data_path}, FDs: {str(self._set_of_fds)}"
+            f"Initializing FDPatternGraph with data: {data_path}, FDs: {str(set_of_fds)}"
         )
 
         # Load data
         logger.debug(f"Loading data from {data_path}")
-        self._data = utils.loaders.load_table(data_path, list(self._fd_columns))
-        self._number_of_tuples = len(self._data)
-        logger.info(
-            f"Loaded data: {self._number_of_tuples} rows, {len(self._fd_columns)} columns"
-        )
+
+        fd_columns: set[str] = set_of_fds.unique_attributes
+        data: pl.DataFrame = utils.loaders.load_table(data_path, list(fd_columns))
+        logger.info(f"Loaded data: {len(data)} rows, {len(fd_columns)} columns")
 
         start: float = time.time()
 
         # Build the graph
         logger.info("Building FDPatternGraph...")
-        self.graph = self._build_graph()
+        self.graph = self._build_graph(data, set_of_fds)
 
         # Calculate edge qualities
         logger.info("Calculating edge qualities...")
@@ -66,11 +66,22 @@ class FDPatternGraph:
 
         if enable_plotting:
             logger.debug("Saving FD pattern graph visualization")
-            nx.draw(self.graph, with_labels=True, pos=nx.circular_layout(self.graph))
+            # Only plot subgraph with 3 values for each attribute
+            sub_g_nodes: list[int] = [
+                node
+                for col_name in fd_columns
+                for node in [
+                    n
+                    for n, data in self.graph.nodes(data=True)
+                    if data["column"] == col_name
+                ][:3]
+            ]
+            sub_g: nx.Graph = self.graph.subgraph(sub_g_nodes)
+            nx.draw(sub_g, with_labels=True, pos=nx.circular_layout(sub_g))
             nx.draw_networkx_edge_labels(
-                self.graph,
-                pos=nx.circular_layout(self.graph),
-                edge_labels=nx.get_edge_attributes(self.graph, "quality"),
+                sub_g,
+                pos=nx.circular_layout(sub_g),
+                edge_labels=nx.get_edge_attributes(sub_g, "quality"),
             )
             plt.savefig(str(output_dir / "fd_pattern_graph.png"))
             plt.clf()
@@ -103,14 +114,15 @@ class FDPatternGraph:
         col_name, _, value = node_id.partition("__")
         return col_name, value
 
-    def get_unique_values(self, col_name: str) -> list[str]:
+    def _get_unique_values(self, df: pl.DataFrame, col_name: str) -> list[str]:
+        """Returns all unique values in the given column of the data frame as a list."""
         return (
-            self._data.select(col_name)
+            df.select(col_name)
             .unique(maintain_order=True)
             .to_dict(as_series=False)[col_name]
         )
 
-    def _build_graph(self) -> nx.DiGraph:
+    def _build_graph(self, data: pl.DataFrame, set_of_fds: SetOfFDs) -> nx.DiGraph:
         """
         Build the graph with nodes for unique (column, value) pairs
         and edges based on functional dependencies.
@@ -119,26 +131,27 @@ class FDPatternGraph:
             NetworkX DiGraph with column-value nodes and FD-based edges
         """
         logger.debug("Starting graph construction")
-        G = nx.DiGraph()
+        G: nx.DiGraph = nx.DiGraph()
 
         # Add nodes for each unique value
         G.add_nodes_from(
             (self._cell_node_id(col_name, value), {"column": col_name, "value": value})
-            for col_name in self._fd_columns
-            for value in self.get_unique_values(col_name)
+            for col_name in data.columns
+            for value in self._get_unique_values(data, col_name)
         )
 
         # Create edge list for each FD and each row (including duplicates)
+        number_of_tuples: int = len(data)
         edges_list: list[tuple] = [
             (
-                self._cell_node_id(str(fd.lhs), self._data[row_idx, fd.lhs]),
-                self._cell_node_id(fd.rhs, self._data[row_idx, fd.rhs]),
+                self._cell_node_id(str(fd.lhs), data[row_idx, fd.lhs]),
+                self._cell_node_id(fd.rhs, data[row_idx, fd.rhs]),
                 fd.cyclic,
                 fd.order,
             )
-            for fd in self._set_of_fds
+            for fd in set_of_fds
             if not isinstance(fd.lhs, tuple)  # TODO: Support multiple attributes on LHS
-            for row_idx in range(self._number_of_tuples)
+            for row_idx in range(number_of_tuples)
         ]
 
         # Add unique edges to graph and calculate support with counter
@@ -149,8 +162,8 @@ class FDPatternGraph:
                     edge_tuple[0],
                     edge_tuple[1],
                     {
-                        "support": support / self._number_of_tuples,
-                        "quality": support / self._number_of_tuples,
+                        "support": support / number_of_tuples,
+                        "quality": support / number_of_tuples,
                         "back_edge": edge_tuple[2],
                         "order": edge_tuple[3],
                         "sum_support": 0,
@@ -175,15 +188,17 @@ class FDPatternGraph:
         The quality is stored as a 'quality' attribute on each edge.
         """
         # Sort edges in reverse order: From bottom to top
-        sorted_edges = sorted(
+        sorted_edges: list = sorted(
             self.graph.edges(data=True), key=lambda edge: edge[2]["order"]
         )
         sorted_edges.reverse()
 
         # Iterate over all edges and compute quality
+        skipped_edges: list = []
         for from_node, to_node, edge_data in sorted_edges:
             # Skip back-edges
             if edge_data["back_edge"]:
+                skipped_edges.append((from_node, to_node, edge_data))
                 continue
             # Sum over direct neighbors summed support to get reachable support
             reachable_support: int = sum(
@@ -207,7 +222,9 @@ class FDPatternGraph:
                 edge_data["n_reachable"] + 1
             )
 
-        # TODO: Compute quality for back-edges
+        for from_node, to_node, edge_data in skipped_edges:
+            # TODO: Compute quality for back-edges
+            return
 
     def get_edge_quality(self, from_node: str, to_node: str) -> float:
         """
@@ -225,24 +242,12 @@ class FDPatternGraph:
 
         return self.graph[from_node][to_node]["quality"]
 
-    def get_cell_value(self, row_idx: int, col_name: str):
-        """Get the value of a cell at the given row and column."""
-        return self._data[row_idx, col_name]
-
-    def get_node_id(self, row_idx: int, col_name: str) -> str:
-        """Get the node ID for a (column, value) pair at the given row and column."""
-        value = self._data[row_idx, col_name]
-        return self._cell_node_id(col_name, value)
-
     def get_node_info(self, node_id: str) -> dict:
         """Get all stored information about a node."""
         return self.graph.nodes[node_id]
 
-    def get_graph(self) -> nx.DiGraph:
-        """Get full graph data type."""
-        return self.graph
-
     def choose_best_next_edge(self, lhs: str, lval: str, rhs: str) -> tuple[str, str]:
+        """Choose best next edge given a LHS attribute and value, returns RHS attribute and value with the highest quality."""
         logger.debug(f"Choosing best edge: {lhs}({lval}) -> {rhs}")
         current_node: str = self._cell_node_id(lhs, lval)
 

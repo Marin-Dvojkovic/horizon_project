@@ -41,8 +41,7 @@ def repair_dirty_data_test(dataset_name: str) -> None:
     fd_pattern_graph: FDPatternGraph = FDPatternGraph(str(dirty_data_path), set_of_fds)
 
     # Compute repairs for dirty data
-    dirty_data: pl.DataFrame = load_data(dirty_data_path)
-    cleaned_data, _ = repair_dirty_data(dirty_data, ordered_fds, fd_pattern_graph)
+    cleaned_data, _ = repair_dirty_data(dirty_data_path, ordered_fds, fd_pattern_graph)
 
     # Assert correctness of repairs
     clean_data: pl.DataFrame = load_data(clean_data_path)
