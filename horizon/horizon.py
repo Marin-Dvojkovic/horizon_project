@@ -36,6 +36,12 @@ parser.add_argument(
     help="Dirty data file, relative to the given dataset_dir. (default: dirty.csv)",
 )
 parser.add_argument(
+    "--n_rows",
+    "-n",
+    type=int,
+    help="Number of rows to repair (still uses full dataset to build graphs). (default: all rows)",
+)
+parser.add_argument(
     "--output_dir",
     "-o",
     type=str,
@@ -47,7 +53,13 @@ parser.add_argument(
     "-l",
     type=str,
     default="INFO",
-    help="Log level. Options: DEBUG, INFO, ERROR. (default: INFO)",
+    help="Log level. Options: DEBUG, INFO, WARNING, ERROR. (default: INFO)",
+)
+parser.add_argument(
+    "--enable_plotting",
+    "-p",
+    action="store_true",
+    help="Enable plotting of the graphs.",
 )
 
 
@@ -70,15 +82,16 @@ def load_fds(dataset_dir: Path, data_csv_path: Path) -> SetOfFDs:
     return fds
 
 
-def load_data(data_path: Path) -> pl.DataFrame:
-    # Check data path
-    if not data_path.exists():
-        logger.error(f"Data file {str(data_path)} does not exist")
-        raise ValueError(f"Data file {str(data_path)} does not exist")
+def load_data(data_csv_path: Path, n_rows: int | None = None) -> pl.DataFrame:
+    # Check csv path
+    if not data_csv_path.exists:
+        logger.error(f"CSV file {str(data_csv_path)} does not exist")
+        raise ValueError(f"CSV file {str(data_csv_path)} does not exist")
 
     # Load dirty data
     logger.info("Loading dirty data...")
-    data: pl.DataFrame = utils.loaders.load_table(data_path)
+    # dirty_data: pl.DataFrame = pl.read_csv(data_csv_path)
+    data: pl.DataFrame = utils.loaders.load_table(data_csv_path, n_rows=n_rows)
     logger.info(
         f"Loaded dirty data with {len(data)} tuples and {len(data.columns)} columns"
     )
@@ -132,6 +145,7 @@ def repair_dirty_data(
     ordered_fds: list[list[FunctionalDependency]],
     fd_pattern_graph: FDPatternGraph,
     collect_pattern_expressions: bool = True,
+    n_rows: int | None = None,
 ) -> tuple[pl.DataFrame, list[PatternExpression]]:
     # Each tuple's PatternExpression is needed only while repairing that tuple.
     # Retaining all of them (for the lineage output) costs O(n_tuples) objects;
@@ -150,7 +164,7 @@ def repair_dirty_data(
     # into lists; columns the loop never touches stay in the compact Arrow frame
     # (a Python str list costs several times more per cell) and are stitched back,
     # in their original positions, at the end.
-    dirty_data: pl.DataFrame = load_data(dirty_data_path)
+    dirty_data: pl.DataFrame = load_data(dirty_data_path, n_rows)
     n_tuples: int = len(dirty_data)
     original_order: list[str] = dirty_data.columns
 
@@ -205,7 +219,13 @@ def repair_dirty_data(
     return cleaned_data, pattern_expressions
 
 
-def main(dataset_dir: Path, output_dir: Path, dirty_data_file: str) -> None:
+def main(
+    dataset_dir: Path,
+    output_dir: Path,
+    dirty_data_file: str,
+    n_rows: int | None,
+    enable_plotting: bool,
+) -> None:
     dataset_name: str = dataset_dir.name
 
     logger.info(
@@ -225,16 +245,18 @@ def main(dataset_dir: Path, output_dir: Path, dirty_data_file: str) -> None:
     # Get traversal order
     logger.info("Computing traversal order for FDs...")
     ordered_fds: list[list[FunctionalDependency]] = get_ordered_fds(
-        set_of_fds, dataset_name, output_dir
+        set_of_fds, dataset_name, output_dir, enable_plotting
     )
 
     # Build FD pattern graph
     logger.info("Building FD pattern graph...")
-    fd_pattern_graph: FDPatternGraph = FDPatternGraph(str(dirty_data_path), set_of_fds)
+    fd_pattern_graph: FDPatternGraph = FDPatternGraph(
+        str(dirty_data_path), set_of_fds, enable_plotting
+    )
 
     # Compute repairs for dirty data
     cleaned_data, pattern_expressions = repair_dirty_data(
-        dirty_data_path, ordered_fds, fd_pattern_graph
+        dirty_data_path, ordered_fds, fd_pattern_graph, n_rows
     )
 
     # Create output directory
@@ -265,7 +287,13 @@ if __name__ == "__main__":
     logger.info(f"Horizon pipeline started with arguments: {vars(args)}")
 
     try:
-        main(Path(args.dataset_dir), Path(args.output_dir), args.dirty_data_file)
+        main(
+            Path(args.dataset_dir),
+            Path(args.output_dir),
+            args.dirty_data_file,
+            args.n_rows,
+            args.enable_plotting,
+        )
         logger.info("Pipeline execution completed successfully")
     except Exception as e:
         logger.error(f"Pipeline execution failed: {str(e)}", exc_info=True)

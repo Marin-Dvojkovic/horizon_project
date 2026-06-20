@@ -124,16 +124,16 @@ def get_fds(source: str | Path, columns_csv_path: Path) -> SetOfFDs:
     return loader().load(source)
 
 
-def _scan_csv(source: str | Path) -> pl.LazyFrame:
+def _scan_csv(source: str | Path, n_rows: int | None) -> pl.LazyFrame:
     # read every column as Utf8: Horizon treats all cells as strings, and
     # dtype inference would rewrite e.g. "5" -> "5.0" on output
-    return pl.scan_csv(source, infer_schema_length=0)
+    return pl.scan_csv(source, infer_schema_length=0, n_rows=n_rows)
 
 
-def _scan_parquet(source: str | Path) -> pl.LazyFrame:
+def _scan_parquet(source: str | Path, n_rows: int | None) -> pl.LazyFrame:
     # cast every column to Utf8 to match _scan_csv: Horizon treats all cells as
     # strings, and parquet's native types would otherwise write e.g. "5" -> "5.0"
-    return pl.scan_parquet(source).cast(pl.Utf8)
+    return pl.scan_parquet(source, n_rows=n_rows).cast(pl.Utf8)
 
 
 _SCANNERS = {
@@ -142,7 +142,9 @@ _SCANNERS = {
 }
 
 
-def load_table(source: str | Path, columns: list[str] | None = None) -> pl.DataFrame:
+def load_table(
+    source: str | Path, columns: list[str] | None = None, n_rows: int | None = None
+) -> pl.DataFrame:
     """Read a CSV or Parquet table with column names lowercased.
 
     Dispatches to a per-extension scanner. Matches the lowercasing in
@@ -156,7 +158,7 @@ def load_table(source: str | Path, columns: list[str] | None = None) -> pl.DataF
     if scanner is None:
         logger.error(f"No loader registered for extension '{ext}'")
         raise ValueError(f"No loader registered for extension '{ext}'")
-    lf: pl.LazyFrame = scanner(source)
+    lf: pl.LazyFrame = scanner(source, n_rows)
     # Remove data types in brackets
     # Lowercase column names to match the casing convention in the FD loaders.
     lf = lf.rename({c: c.strip().lower() for c in lf.collect_schema().names()})

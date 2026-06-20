@@ -20,7 +20,6 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 output_dir: Path = Path("output")
-enable_plotting: bool = False
 
 
 class FDPatternGraph:
@@ -34,7 +33,9 @@ class FDPatternGraph:
     # Class variable
     graph: nx.DiGraph
 
-    def __init__(self, data_path: str, set_of_fds: SetOfFDs):
+    def __init__(
+        self, data_path: str, set_of_fds: SetOfFDs, enable_plotting: bool = False
+    ):
         """
         Initialize the FDPatternGraph.
 
