@@ -8,26 +8,34 @@ Artifacts behind the injected datasets in `datasets/{table}/injected/`.
 - `hospital_egtasks/`, `insurance_claims_egtasks/` — the original BART **EGTask**
   configuration folders, one per dataset, included verbatim so the exact injection
   setup behind each changes file is reproducible.
-- `dedup_report.md` — the per-file duplicate-drop numbers, **regenerated on every run**
-  of `notebooks/build_injected.ipynb`. This README is static; that file is the output.
 
-The build only reads the named `*_changes.csv` files and rewrites `dedup_report.md`;
-it never lists or touches the EGTask folders, so they can be added by hand safely.
+## File naming
 
-## Why duplicates instead of unique changes
+Both the changes files and the EGTask XMLs encode the same four fields:
 
-A changes file logs several rows for the same cell when one cell is implicated by
-several FD constraints — same clean value, different candidate dirty values. A dirty
-table holds one value per cell, so the build keeps the last occurrence and drops the
-rest.
+```
+{table}_{etype}_{rate}[_{level}]_changes.csv        e.g. hospital_2k_e1_10_high_changes.csv
+{table}-egtask-{etype}-{rate}[-{level}].xml         e.g. hospital_2k-egtask-e1-10-high.xml
+```
 
-BART has an option to emit only unique changes (one error per cell), but enabling it
-pushed injection runtime so high that we could not generate the datasets at all. We
-disabled that option and drop the duplicates afterwards, documenting the effect in
-`dedup_report.md` so it stays transparent rather than hidden.
+- **table** — `hospital_2k` or `insurance_claims_2k`, the 2000-row clean table the errors
+  were injected into.
+- **etype** — error-generation strategy:
+  - `e1` — structured (typo / active-domain) errors driven by the FD constraints.
+  - `e2` — random errors.
+- **rate** — nominal error rate as a percentage (`5`, `10`, `15`, `20`, `25`, `30`).
+- **level** — **repairability** of the injected errors relative to the FD they target,
+  present for `e1` only (`e2` random has no level). For an FD `LHS → RHS`:
+  - `low` — the error only violates the **LHS** (the determinant is wrong, so the FD
+    gives no leverage to repair it — low repairability).
+  - `med` — the error violates **both** the LHS and the RHS.
+  - `high` — the error only violates the **RHS** (the LHS is intact, so the FD + correct
+    LHS pins down the right value — high repairability).
 
-This lowers the realized error rate below the nominal label (`e1_5` etc.): the realized
-number of dirty cells is `applied_cells`, not `change_rows`. That is fine for our use of
-the sweep — it exists to show how **runtime scales with the error rate**, and
-`applied_cells` still increases monotonically (roughly linearly) from one rate to the
-next, so the sweep remains a valid runtime-vs-error-rate benchmark.
+  This is visible in the EGTask `vioGenQuery` comparisons: `high` uses only RHS attributes
+  with `!=`, `low` uses only LHS attributes with `==`, and `med` pairs an RHS `!=` with an
+  LHS `==`.
+
+So `insurance_claims_2k_e1_5_med_changes.csv` is the 5% structured run on the 2k insurance
+table where errors break both sides of the FD, and `hospital_2k_e2_20_changes.csv` is the
+random 20% run on the 2k hospital table.

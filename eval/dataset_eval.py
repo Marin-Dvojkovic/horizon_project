@@ -35,6 +35,15 @@ def avg_frequency(series: pl.Series) -> float:
     return len(non_null) / unique
 
 
+def redundancy_per_column(df: pl.DataFrame) -> dict[str, float]:
+    """Paper's avg. redundancy (avg_frequency) for every column, keyed by name.
+
+    Per-column view of the paper's "average frequency of each attribute value"
+    (Table 1). Each value is `non_null_count / unique_count` for that column.
+    """
+    return {c: avg_frequency(df[c]) for c in df.columns}
+
+
 def avg_value_length(df: pl.DataFrame) -> float:
     """Mean string length per column (non-null only), averaged across columns.
 
@@ -72,6 +81,7 @@ def characterize_dataset(df: pl.DataFrame) -> dict:
         "n_rows": n_rows(df),
         "n_cols": n_cols(df),
         "avg_redundancy": avg_redundancy(df),
+        "redundancy_per_column": redundancy_per_column(df),
         "avg_value_length": avg_value_length(df),
         "low_redundancy_col_count": low_redundancy_col_count(df),
     }

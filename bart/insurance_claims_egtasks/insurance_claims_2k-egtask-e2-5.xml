@@ -1,0 +1,69 @@
+<task>
+    <target>
+        <type>DBMS</type>
+        <access-configuration>
+            <driver>org.postgresql.Driver</driver>
+            <uri>jdbc:postgresql:bart_insurance_claims</uri>
+            <schema>target</schema>
+            <login>pguser</login>
+            <password>pguser</password>
+        </access-configuration>
+        <import createTables="true">
+            <input type="csv" separator="," table="clean">C:/Users/dvojk/repositories/BART-master/examples/insurance_claims/samples/clean_2000.csv</input>
+        </import>
+    </target>
+    <configuration>
+        <printLog>true</printLog>
+        <recreateDBOnStart>true</recreateDBOnStart>
+        <applyCellChanges>false</applyCellChanges>
+        <cloneTargetSchema>true</cloneTargetSchema>
+        <cloneSuffix>_dirty</cloneSuffix>
+        <exportDirtyDB>false</exportDirtyDB>
+        <exportCellChanges full="true">true</exportCellChanges>
+        <exportCellChangesPath>Temp/bart/insurance_claims_5_random_n2000/changes.csv</exportCellChangesPath>
+        <useDeltaDBForChanges>true</useDeltaDBForChanges>
+        <!-- RANDOM errors: each cell in the listed (FD-involved) columns is
+             independently dirtied with probability = 5% (ExecuteRandomErrors
+             pickRandom per cell). NOT FD-driven; just noise on the FD columns. -->
+        <randomErrors>
+            <tables>
+                <table name="clean">
+                    <percentage>5</percentage>
+                    <attributes>
+                    <attribute>airbags</attribute>
+                    <attribute>displacement</attribute>
+                    <attribute>engine_type</attribute>
+                    <attribute>fuel_type</attribute>
+                    <attribute>is_power_steering</attribute>
+                    <attribute>length</attribute>
+                    <attribute>max_power</attribute>
+                    <attribute>max_torque</attribute>
+                    <attribute>model</attribute>
+                    <attribute>region_code</attribute>
+                    <attribute>region_density</attribute>
+                    <attribute>width</attribute>
+                    </attributes>
+                </table>
+            </tables>
+        </randomErrors>
+        <dirtyStrategies>
+            <defaultStrategy>
+                <strategy chars="*" charsToAdd="3">TypoAppendString</strategy>
+            </defaultStrategy>
+            <attributeStrategy>
+                <attribute table="clean" name="airbags"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="displacement"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="engine_type"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="fuel_type"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="is_power_steering"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="length"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="max_power"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="max_torque"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="model"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="region_code"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="region_density"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="width"><strategy>TypoActiveDomain</strategy></attribute>
+            </attributeStrategy>
+        </dirtyStrategies>
+    </configuration>
+</task>
