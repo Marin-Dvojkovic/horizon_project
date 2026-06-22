@@ -1,0 +1,151 @@
+<task>
+    <!-- ****************************************************
+                      DATABASES
+    **************************************************** -->
+    <target>
+        <type>DBMS</type>
+        <access-configuration>
+            <driver>org.postgresql.Driver</driver>
+            <uri>jdbc:postgresql:bart_hospital</uri>
+            <schema>target</schema>
+            <login>pguser</login>
+            <password>pguser</password>
+        </access-configuration>
+        <import createTables="true">
+            <input type="csv" separator="," table="clean">C:/Users/dvojk/repositories/BART-master/examples/hospital/samples/clean_2000.csv</input>
+        </import>
+    </target>
+
+    <!-- ****************************************************
+                    DEPENDENCIES  (one DC per FD in fds.csv)
+    **************************************************** -->
+    <dependencies><![CDATA[DCs: 
+
+            e1: clean(facility_id: $facility_id1, facility_name: $facility_name1, address: $address1, city_town: $city_town1, state: $state1, zip_code: $zip_code1, county_parish: $county_parish1, telephone_number: $telephone_number1, measure_id: $measure_id1, measure_name: $measure_name1, compared_to_national: $compared_to_national1, score: $score1, footnote: $footnote1, start_date: $start_date1, end_date: $end_date1),
+            clean(facility_id: $facility_id2, facility_name: $facility_name2, address: $address2, city_town: $city_town2, state: $state2, zip_code: $zip_code2, county_parish: $county_parish2, telephone_number: $telephone_number2, measure_id: $measure_id2, measure_name: $measure_name2, compared_to_national: $compared_to_national2, score: $score2, footnote: $footnote2, start_date: $start_date2, end_date: $end_date2),
+                $facility_id1 == $facility_id2, $address1 != $address2 -> #fail. 
+
+        
+            e2: clean(facility_id: $facility_id1, facility_name: $facility_name1, address: $address1, city_town: $city_town1, state: $state1, zip_code: $zip_code1, county_parish: $county_parish1, telephone_number: $telephone_number1, measure_id: $measure_id1, measure_name: $measure_name1, compared_to_national: $compared_to_national1, score: $score1, footnote: $footnote1, start_date: $start_date1, end_date: $end_date1),
+            clean(facility_id: $facility_id2, facility_name: $facility_name2, address: $address2, city_town: $city_town2, state: $state2, zip_code: $zip_code2, county_parish: $county_parish2, telephone_number: $telephone_number2, measure_id: $measure_id2, measure_name: $measure_name2, compared_to_national: $compared_to_national2, score: $score2, footnote: $footnote2, start_date: $start_date2, end_date: $end_date2),
+                $facility_id1 == $facility_id2, $facility_name1 != $facility_name2 -> #fail. 
+
+        
+            e3: clean(facility_id: $facility_id1, facility_name: $facility_name1, address: $address1, city_town: $city_town1, state: $state1, zip_code: $zip_code1, county_parish: $county_parish1, telephone_number: $telephone_number1, measure_id: $measure_id1, measure_name: $measure_name1, compared_to_national: $compared_to_national1, score: $score1, footnote: $footnote1, start_date: $start_date1, end_date: $end_date1),
+            clean(facility_id: $facility_id2, facility_name: $facility_name2, address: $address2, city_town: $city_town2, state: $state2, zip_code: $zip_code2, county_parish: $county_parish2, telephone_number: $telephone_number2, measure_id: $measure_id2, measure_name: $measure_name2, compared_to_national: $compared_to_national2, score: $score2, footnote: $footnote2, start_date: $start_date2, end_date: $end_date2),
+                $zip_code1 == $zip_code2, $county_parish1 != $county_parish2 -> #fail. 
+
+        
+            e4: clean(facility_id: $facility_id1, facility_name: $facility_name1, address: $address1, city_town: $city_town1, state: $state1, zip_code: $zip_code1, county_parish: $county_parish1, telephone_number: $telephone_number1, measure_id: $measure_id1, measure_name: $measure_name1, compared_to_national: $compared_to_national1, score: $score1, footnote: $footnote1, start_date: $start_date1, end_date: $end_date1),
+            clean(facility_id: $facility_id2, facility_name: $facility_name2, address: $address2, city_town: $city_town2, state: $state2, zip_code: $zip_code2, county_parish: $county_parish2, telephone_number: $telephone_number2, measure_id: $measure_id2, measure_name: $measure_name2, compared_to_national: $compared_to_national2, score: $score2, footnote: $footnote2, start_date: $start_date2, end_date: $end_date2),
+                $zip_code1 == $zip_code2, $state1 != $state2 -> #fail. 
+
+        
+            e5: clean(facility_id: $facility_id1, facility_name: $facility_name1, address: $address1, city_town: $city_town1, state: $state1, zip_code: $zip_code1, county_parish: $county_parish1, telephone_number: $telephone_number1, measure_id: $measure_id1, measure_name: $measure_name1, compared_to_national: $compared_to_national1, score: $score1, footnote: $footnote1, start_date: $start_date1, end_date: $end_date1),
+            clean(facility_id: $facility_id2, facility_name: $facility_name2, address: $address2, city_town: $city_town2, state: $state2, zip_code: $zip_code2, county_parish: $county_parish2, telephone_number: $telephone_number2, measure_id: $measure_id2, measure_name: $measure_name2, compared_to_national: $compared_to_national2, score: $score2, footnote: $footnote2, start_date: $start_date2, end_date: $end_date2),
+                $address1 == $address2, $city_town1 == $city_town2, $zip_code1 != $zip_code2 -> #fail. 
+
+        
+            e6: clean(facility_id: $facility_id1, facility_name: $facility_name1, address: $address1, city_town: $city_town1, state: $state1, zip_code: $zip_code1, county_parish: $county_parish1, telephone_number: $telephone_number1, measure_id: $measure_id1, measure_name: $measure_name1, compared_to_national: $compared_to_national1, score: $score1, footnote: $footnote1, start_date: $start_date1, end_date: $end_date1),
+            clean(facility_id: $facility_id2, facility_name: $facility_name2, address: $address2, city_town: $city_town2, state: $state2, zip_code: $zip_code2, county_parish: $county_parish2, telephone_number: $telephone_number2, measure_id: $measure_id2, measure_name: $measure_name2, compared_to_national: $compared_to_national2, score: $score2, footnote: $footnote2, start_date: $start_date2, end_date: $end_date2),
+                $address1 == $address2, $facility_name1 == $facility_name2, $zip_code1 != $zip_code2 -> #fail. 
+
+        
+            e7: clean(facility_id: $facility_id1, facility_name: $facility_name1, address: $address1, city_town: $city_town1, state: $state1, zip_code: $zip_code1, county_parish: $county_parish1, telephone_number: $telephone_number1, measure_id: $measure_id1, measure_name: $measure_name1, compared_to_national: $compared_to_national1, score: $score1, footnote: $footnote1, start_date: $start_date1, end_date: $end_date1),
+            clean(facility_id: $facility_id2, facility_name: $facility_name2, address: $address2, city_town: $city_town2, state: $state2, zip_code: $zip_code2, county_parish: $county_parish2, telephone_number: $telephone_number2, measure_id: $measure_id2, measure_name: $measure_name2, compared_to_national: $compared_to_national2, score: $score2, footnote: $footnote2, start_date: $start_date2, end_date: $end_date2),
+                $measure_id1 == $measure_id2, $measure_name1 != $measure_name2 -> #fail. 
+
+        
+            e8: clean(facility_id: $facility_id1, facility_name: $facility_name1, address: $address1, city_town: $city_town1, state: $state1, zip_code: $zip_code1, county_parish: $county_parish1, telephone_number: $telephone_number1, measure_id: $measure_id1, measure_name: $measure_name1, compared_to_national: $compared_to_national1, score: $score1, footnote: $footnote1, start_date: $start_date1, end_date: $end_date1),
+            clean(facility_id: $facility_id2, facility_name: $facility_name2, address: $address2, city_town: $city_town2, state: $state2, zip_code: $zip_code2, county_parish: $county_parish2, telephone_number: $telephone_number2, measure_id: $measure_id2, measure_name: $measure_name2, compared_to_national: $compared_to_national2, score: $score2, footnote: $footnote2, start_date: $start_date2, end_date: $end_date2),
+                $measure_name1 == $measure_name2, $measure_id1 != $measure_id2 -> #fail. 
+
+        ]]></dependencies>
+
+    <!-- ****************************************************
+                      CONFIGURATION
+    **************************************************** -->
+    <configuration>
+        <printLog>true</printLog>
+        <recreateDBOnStart>true</recreateDBOnStart>
+
+        <!-- Run FDs SERIALLY: autoselect picks #CPUs and runs all FDs at once,
+             multiplying peak heap; serial keeps one equivalence class live.
+             The loader only reads autoSelect + maxNumberOfThreads; <numberOfThreads>
+             is ignored (DAOEGTaskConfiguration.java:292-298). -->
+        <autoSelectBestNumberOfThreads>false</autoSelectBestNumberOfThreads>
+        <maxNumberOfThreads>1</maxNumberOfThreads>
+
+        <!-- DIFF-ONLY: only changes.csv is produced -->
+        <applyCellChanges>false</applyCellChanges>
+        <cloneTargetSchema>true</cloneTargetSchema>
+        <cloneSuffix>_dirty</cloneSuffix>
+        <exportDirtyDB>false</exportDirtyDB>
+        <exportDirtyDBType>CSV</exportDirtyDBType>
+        <exportCellChanges full="true">true</exportCellChanges>
+        <exportCellChangesPath>Temp/bart/hospital_30_med_n2000/changes.csv</exportCellChangesPath>
+
+        <generateAllChanges>false</generateAllChanges>
+        <!-- true: changes from different FDs may NOT share a cell/context, so
+             every error is independent and uniquely attributable -> clean
+             repairability benchmark. Costs memory; kept affordable by threads=1
+             + the sample. The full 170k task may page with this on. -->
+        <avoidInteractions>true</avoidInteractions>
+        <checkChanges>false</checkChanges>
+        <estimateRepairability>false</estimateRepairability>
+        <useDeltaDBForChanges>true</useDeltaDBForChanges>
+
+        <errorPercentages>
+            <defaultPercentage>0.0</defaultPercentage>
+            <vioGenQueries>
+            <vioGenQuery id="e1"><comparison>(address1 != address2)</comparison><percentage>15.0</percentage></vioGenQuery>
+            <vioGenQuery id="e1"><comparison>(facility_id1 == facility_id2)</comparison><percentage>15.0</percentage></vioGenQuery>
+            <vioGenQuery id="e2"><comparison>(facility_name1 != facility_name2)</comparison><percentage>15.0</percentage></vioGenQuery>
+            <vioGenQuery id="e2"><comparison>(facility_id1 == facility_id2)</comparison><percentage>15.0</percentage></vioGenQuery>
+            <vioGenQuery id="e3"><comparison>(county_parish1 != county_parish2)</comparison><percentage>15.0</percentage></vioGenQuery>
+            <vioGenQuery id="e3"><comparison>(zip_code1 == zip_code2)</comparison><percentage>15.0</percentage></vioGenQuery>
+            <vioGenQuery id="e4"><comparison>(state1 != state2)</comparison><percentage>15.0</percentage></vioGenQuery>
+            <vioGenQuery id="e4"><comparison>(zip_code1 == zip_code2)</comparison><percentage>15.0</percentage></vioGenQuery>
+            <vioGenQuery id="e5"><comparison>(zip_code1 != zip_code2)</comparison><percentage>15.0</percentage></vioGenQuery>
+            <vioGenQuery id="e5"><comparison>(address1 == address2)</comparison><percentage>15.0</percentage></vioGenQuery>
+            <vioGenQuery id="e6"><comparison>(zip_code1 != zip_code2)</comparison><percentage>15.0</percentage></vioGenQuery>
+            <vioGenQuery id="e6"><comparison>(address1 == address2)</comparison><percentage>15.0</percentage></vioGenQuery>
+            <vioGenQuery id="e7"><comparison>(measure_name1 != measure_name2)</comparison><percentage>15.0</percentage></vioGenQuery>
+            <vioGenQuery id="e7"><comparison>(measure_id1 == measure_id2)</comparison><percentage>15.0</percentage></vioGenQuery>
+            <vioGenQuery id="e8"><comparison>(measure_id1 != measure_id2)</comparison><percentage>15.0</percentage></vioGenQuery>
+            <vioGenQuery id="e8"><comparison>(measure_name1 == measure_name2)</comparison><percentage>15.0</percentage></vioGenQuery>
+            </vioGenQueries>
+        </errorPercentages>
+
+        <!-- append-garbage default, active-domain swap for the FD-dependent
+             columns (keeps dirty values realistic) -->
+        <dirtyStrategies>
+            <defaultStrategy>
+                <strategy chars="*" charsToAdd="3">TypoAppendString</strategy>
+            </defaultStrategy>
+            <attributeStrategy>
+                <attribute table="clean" name="address"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="county_parish"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="facility_name"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="measure_id"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="measure_name"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="state"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="zip_code"><strategy>TypoActiveDomain</strategy></attribute>
+            </attributeStrategy>
+        </dirtyStrategies>
+
+        <vioGenQueriesConfiguration>
+            <!-- FDs are SYMMETRIC (carry equalities) -> only *Symmetric* knobs matter.
+                 probability=1.0 -> process every candidate pair, hit sampleSize ASAP.
+                 offset=0.0 -> effective "no offset" (the loader cannot set the
+                 symmetric-offset boolean false; DAO:273-277). -->
+            <probabilityFactorForStandardQueries>0.25</probabilityFactorForStandardQueries>
+            <offsetFactorForStandardQueries>0.05</offsetFactorForStandardQueries>
+            <probabilityFactorForSymmetricQueries>1.0</probabilityFactorForSymmetricQueries>
+            <offsetFactorForSymmetricQueries>0.0</offsetFactorForSymmetricQueries>
+            <probabilityFactorForInequalityQueries>0.05</probabilityFactorForInequalityQueries>
+            <offsetFactorForInequalityQueries>0.05</offsetFactorForInequalityQueries>
+            <windowSizeFactorForInequalityQueries>1.5</windowSizeFactorForInequalityQueries>
+        </vioGenQueriesConfiguration>
+    </configuration>
+</task>

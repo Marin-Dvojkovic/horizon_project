@@ -1,0 +1,63 @@
+<task>
+    <target>
+        <type>DBMS</type>
+        <access-configuration>
+            <driver>org.postgresql.Driver</driver>
+            <uri>jdbc:postgresql:bart_hospital</uri>
+            <schema>target</schema>
+            <login>pguser</login>
+            <password>pguser</password>
+        </access-configuration>
+        <import createTables="true">
+            <input type="csv" separator="," table="clean">C:/Users/dvojk/repositories/BART-master/examples/hospital/samples/clean_2000.csv</input>
+        </import>
+    </target>
+    <configuration>
+        <printLog>true</printLog>
+        <recreateDBOnStart>true</recreateDBOnStart>
+        <applyCellChanges>false</applyCellChanges>
+        <cloneTargetSchema>true</cloneTargetSchema>
+        <cloneSuffix>_dirty</cloneSuffix>
+        <exportDirtyDB>false</exportDirtyDB>
+        <exportCellChanges full="true">true</exportCellChanges>
+        <exportCellChangesPath>Temp/bart/hospital_5_random_n2000/changes.csv</exportCellChangesPath>
+        <useDeltaDBForChanges>true</useDeltaDBForChanges>
+        <!-- RANDOM errors: each cell in the listed (FD-involved) columns is
+             independently dirtied with probability = 5% (ExecuteRandomErrors
+             pickRandom per cell). NOT FD-driven; just noise on the FD columns. -->
+        <randomErrors>
+            <tables>
+                <table name="clean">
+                    <percentage>5</percentage>
+                    <attributes>
+                    <attribute>address</attribute>
+                    <attribute>city_town</attribute>
+                    <attribute>county_parish</attribute>
+                    <attribute>facility_id</attribute>
+                    <attribute>facility_name</attribute>
+                    <attribute>measure_id</attribute>
+                    <attribute>measure_name</attribute>
+                    <attribute>state</attribute>
+                    <attribute>zip_code</attribute>
+                    </attributes>
+                </table>
+            </tables>
+        </randomErrors>
+        <dirtyStrategies>
+            <defaultStrategy>
+                <strategy chars="*" charsToAdd="3">TypoAppendString</strategy>
+            </defaultStrategy>
+            <attributeStrategy>
+                <attribute table="clean" name="address"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="city_town"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="county_parish"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="facility_id"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="facility_name"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="measure_id"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="measure_name"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="state"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="zip_code"><strategy>TypoActiveDomain</strategy></attribute>
+            </attributeStrategy>
+        </dirtyStrategies>
+    </configuration>
+</task>
