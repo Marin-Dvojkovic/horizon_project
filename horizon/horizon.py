@@ -5,13 +5,13 @@ import time
 from pathlib import Path
 
 import polars as pl
-import utils.loaders
 from fd_pattern_graph import FDPatternGraph
 from fds.fd import FunctionalDependency
 from fds.fd_pattern import FDPattern
 from fds.pattern_expression import PatternExpression
 from fds.set_of_fds import SetOfFDs
 from static_fd_analysis import get_ordered_fds
+from utils.loaders import load_fds, load_table
 from utils.logging_config import get_logger, setup_logging
 
 # Setup logging
@@ -63,41 +63,6 @@ parser.add_argument(
 )
 
 
-def load_fds(dataset_dir: Path, data_csv_path: Path) -> SetOfFDs:
-    # Check for fds.csv or fds.txt (prefer .csv)
-    fd_files: list[Path] = sorted(
-        list(dataset_dir.glob("fds.*")),
-        key=lambda path: path.suffix.lower() != ".csv",
-    )
-    if len(fd_files) < 1:
-        logger.error(f"No FD file found under {str(dataset_dir)}")
-        raise ValueError(f"No FD file found under {str(dataset_dir)}")
-
-    fds_path: Path = fd_files[0]
-    logger.debug(f"Loading FDs from: {fds_path}")
-
-    # Use data loader to read input FDs from file
-    fds: SetOfFDs = utils.loaders.get_fds(fds_path, data_csv_path)
-    logger.info(f"Loaded {len(fds)} functional dependencies")
-    return fds
-
-
-def load_data(data_csv_path: Path, n_rows: int | None = None) -> pl.DataFrame:
-    # Check csv path
-    if not data_csv_path.exists:
-        logger.error(f"CSV file {str(data_csv_path)} does not exist")
-        raise ValueError(f"CSV file {str(data_csv_path)} does not exist")
-
-    # Load dirty data
-    logger.info("Loading dirty data...")
-    # dirty_data: pl.DataFrame = pl.read_csv(data_csv_path)
-    data: pl.DataFrame = utils.loaders.load_table(data_csv_path, n_rows=n_rows)
-    logger.info(
-        f"Loaded dirty data with {len(data)} tuples and {len(data.columns)} columns"
-    )
-    return data
-
-
 def repair_tuple(
     columns: dict[str, list[str]],
     t: int,
@@ -105,7 +70,8 @@ def repair_tuple(
     repair_table: dict[FunctionalDependency, dict[str, str]],
     p_exp: PatternExpression,
     fd_pattern_graph: FDPatternGraph,
-):
+) -> None:
+    """Given a data frame as a dict, applies in-place repairs for tuple with index t and functional dependency fd."""
     lval: str = str(columns[fd.lhs][t])
     rval: str = str(columns[fd.rhs][t])
     existing_pattern: FDPattern | None = p_exp.attribute_in_expression(fd.rhs)
@@ -146,11 +112,14 @@ def repair_dirty_data(
     fd_pattern_graph: FDPatternGraph,
     collect_pattern_expressions: bool = True,
     n_rows: int | None = None,
-) -> tuple[pl.DataFrame, list[PatternExpression]]:
+) -> tuple[pl.DataFrame, list[PatternExpression], float]:
+    """Repairs data under the given path, based on the given order and FD Pattern graph.
+    If n_rows is given, only repairs the first n_rows tuples."""
     # Each tuple's PatternExpression is needed only while repairing that tuple.
     # Retaining all of them (for the lineage output) costs O(n_tuples) objects;
     # set collect_pattern_expressions=False to free each one immediately when the
     # lineage is not needed (e.g. runtime benchmarks).
+
     # Compute repairs for dirty data
     pattern_expressions: list[PatternExpression] = []
     repair_table: dict[FunctionalDependency, dict[str, str]] = {
@@ -164,7 +133,12 @@ def repair_dirty_data(
     # into lists; columns the loop never touches stay in the compact Arrow frame
     # (a Python str list costs several times more per cell) and are stitched back,
     # in their original positions, at the end.
-    dirty_data: pl.DataFrame = load_data(dirty_data_path, n_rows)
+    # Load dirty data
+    logger.info("Loading dirty data...")
+    dirty_data: pl.DataFrame = load_table(dirty_data_path, n_rows=n_rows)
+    logger.info(
+        f"Loaded dirty data with {len(dirty_data)} tuples and {len(dirty_data.columns)} columns"
+    )
     n_tuples: int = len(dirty_data)
     original_order: list[str] = dirty_data.columns
 
@@ -216,7 +190,7 @@ def repair_dirty_data(
         [pl.Series(name, columns[name]) for name in touched_cols]
     ).select(original_order)
 
-    return cleaned_data, pattern_expressions
+    return cleaned_data, pattern_expressions, elapsed_time
 
 
 def main(
@@ -232,10 +206,8 @@ def main(
         f"Starting Horizon pipeline with dataset '{dataset_name}': {dataset_dir}"
     )
 
-    # Verify data path
-    fds_path: Path = dataset_dir / "fds.csv"
+    # Data path
     dirty_data_path: Path = dataset_dir / dirty_data_file
-    logger.debug(f"FD path: {fds_path}")
     logger.debug(f"Dirty data path: {dirty_data_path}")
 
     # Load FDs
@@ -244,18 +216,18 @@ def main(
 
     # Get traversal order
     logger.info("Computing traversal order for FDs...")
-    ordered_fds: list[list[FunctionalDependency]] = get_ordered_fds(
+    ordered_fds, fd_ordering_time = get_ordered_fds(
         set_of_fds, dataset_name, output_dir, enable_plotting
     )
 
     # Build FD pattern graph
     logger.info("Building FD pattern graph...")
     fd_pattern_graph: FDPatternGraph = FDPatternGraph(
-        str(dirty_data_path), set_of_fds, enable_plotting
+        dirty_data_path, set_of_fds, enable_plotting
     )
 
     # Compute repairs for dirty data
-    cleaned_data, pattern_expressions = repair_dirty_data(
+    cleaned_data, pattern_expressions, repair_time = repair_dirty_data(
         dirty_data_path, ordered_fds, fd_pattern_graph, n_rows
     )
 
@@ -275,6 +247,19 @@ def main(
     exp_file.writelines("\n".join(f"{str(p_exp)}" for p_exp in pattern_expressions))
     exp_file.close()
     logger.info(f"Final pattern expressions saved to {exp_output_path}")
+
+    # Save repair time statistics
+    stat_output_path: Path = output_dir / f"{dataset_name}_statistics.txt"
+    stat_file = open(stat_output_path, "w", encoding="utf-8")
+    stat_file.write(f"Order FDs time: {fd_ordering_time:.3f}s\n")
+    stat_file.write(
+        f"Build FD Pattern graph time: {fd_pattern_graph._build_time:.3f}s\n"
+    )
+    stat_file.write(f"Repair time: {repair_time:.3f}s\n")
+    total_time: float = fd_ordering_time + fd_pattern_graph._build_time + repair_time
+    stat_file.write(f"Total time: {total_time:.3f}s\n")
+    stat_file.close()
+    logger.info(f"Repair time statistics saved to {stat_output_path}")
 
 
 if __name__ == "__main__":

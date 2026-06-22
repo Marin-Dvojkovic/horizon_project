@@ -7,8 +7,9 @@ from polars.testing import assert_frame_equal
 from horizon.fd_pattern_graph import FDPatternGraph
 from horizon.fds.fd import FunctionalDependency
 from horizon.fds.set_of_fds import SetOfFDs
-from horizon.horizon import load_data, repair_dirty_data
+from horizon.horizon import repair_dirty_data
 from horizon.static_fd_analysis import get_ordered_fds
+from horizon.utils.loaders import load_table
 
 test_data_dir: Path = Path(__file__).parent.resolve() / "test_data"
 output_dir: Path = Path(__file__).parent.resolve() / Path("output")
@@ -35,16 +36,18 @@ def repair_dirty_data_test(dataset_name: str) -> None:
     # Get traversal order
     ordered_fds: list[list[FunctionalDependency]] = get_ordered_fds(
         set_of_fds, dataset_name, output_dir
-    )
+    )[0]
 
     # Build FD pattern graph
-    fd_pattern_graph: FDPatternGraph = FDPatternGraph(str(dirty_data_path), set_of_fds)
+    fd_pattern_graph: FDPatternGraph = FDPatternGraph(dirty_data_path, set_of_fds)
 
     # Compute repairs for dirty data
-    cleaned_data, _ = repair_dirty_data(dirty_data_path, ordered_fds, fd_pattern_graph)
+    cleaned_data: pl.DataFrame = repair_dirty_data(
+        dirty_data_path, ordered_fds, fd_pattern_graph
+    )[0]
 
     # Assert correctness of repairs
-    clean_data: pl.DataFrame = load_data(clean_data_path)
+    clean_data: pl.DataFrame = load_table(clean_data_path)
 
     assert_frame_equal(cleaned_data, clean_data)
 

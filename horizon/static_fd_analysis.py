@@ -397,7 +397,7 @@ def get_ordered_fds(
     dataset_name: str,
     output_dir: Path = Path("output"),
     enable_plotting: bool = True,
-) -> list[list[FunctionalDependency]]:
+) -> tuple[list[list[FunctionalDependency]], float]:
     logger.info("Computing ordered FDs for pipeline execution")
 
     start: float = time.time()
@@ -429,7 +429,8 @@ def get_ordered_fds(
     logger.debug([f"{str(fd)}: {fd.cyclic}" for fd in set_of_fds])
 
     end: float = time.time()
-    logger.info(f"Completed ordering FDs in {(end - start):.2f}s")
+    elapsed_time: float = end - start
+    logger.info(f"Completed ordering FDs in {elapsed_time:.2f}s")
 
     # If plotting is enabled, save graph visualizations under output directory
     if enable_plotting:
@@ -447,4 +448,4 @@ def get_ordered_fds(
         except Exception as e:
             logger.warning(f"Could not export graph data: {e}")
 
-    return ordered_fds
+    return ordered_fds, elapsed_time

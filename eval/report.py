@@ -35,7 +35,7 @@ def characterize_lazy(source: str | Path, fds: list[FunctionalDependency]) -> di
     clusters: dict[FunctionalDependency, pl.DataFrame] = {}
     for i, fd in enumerate(fds, 1):
         print(f"[{i}/{len(fds)}] {fd}", flush=True)
-        df_fd = load_table(source, columns=fd.get_attributes())
+        df_fd = load_table(Path(source), columns=fd.get_attributes())
         mb = df_fd.estimated_size() / 1024 / 1024
         print(f"    loaded {df_fd.height:,} rows, {mb:.1f} MB", flush=True)
         if fd.lhs_attributes not in lhs_red:

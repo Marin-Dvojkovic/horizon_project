@@ -138,16 +138,16 @@ def run_pipeline(
 
     start = time.perf_counter()
 
-    set_of_fds = pipe.load_fds(ds_dir, dirty_path)
+    set_of_fds = pipe.utils.loaders.load_fds(ds_dir, dirty_path)
     stage(f"Loaded {len(set_of_fds)} functional dependencies")
 
-    ordered_fds = get_ordered_fds(set_of_fds, dataset, output_dir)
+    ordered_fds, _ = get_ordered_fds(set_of_fds, dataset, output_dir)
     stage(f"Computed FD traversal order ({len(ordered_fds)} groups)")
 
-    graph = FDPatternGraph(str(dirty_path), set_of_fds)
+    graph = FDPatternGraph(dirty_path, set_of_fds)
     stage("Built FD pattern graph")
 
-    dirty = pipe.load_data(dirty_path)
+    dirty = pipe.utils.loaders.load_table(dirty_path)
     stage(f"Loaded injected table ({len(dirty):,} rows)")
 
     # tap the pipeline's own "Repaired X/Y tuples" logs to fill a progress bar
@@ -167,7 +167,7 @@ def run_pipeline(
         hzn_logger.setLevel(logging.INFO)
         hzn_logger.addHandler(handler)
     try:
-        cleaned, pattern_expressions = pipe.repair_dirty_data(
+        cleaned, pattern_expressions, _ = pipe.repair_dirty_data(
             dirty_path, ordered_fds, graph
         )
     finally:

@@ -21,15 +21,17 @@ This installs all dependencies (defined in [`pyproject.toml`](pyproject.toml).) 
 In the project directory, run:
 
 ```bash
-uv run horizon/horizon.py --dataset_dir path/to/dataset/ --dirty_data_file dirty.csv --output_dir output --log_level INFO
+uv run horizon/horizon.py --dataset_dir path/to/dataset/ [--dirty_data_file dirty.csv] [--output_dir output] [--n_rows n] [--log_level INFO] [--enable_plotting]
 ```
 
 Explanation of arguments:
 
-- _--dataset_dir_ or _-ds_: Directory containing clean (`clean.csv`) and dirty data (`dirty.csv`, can be configured via _-dd_), as well as the functional dependencies (`fds.csv`). Required argument.
-- _--dirty_data_file_ or _-dd_: Dirty data file, relative to the given dataset_dir. (default: dirty.csv)
-- _output_dir_ or _-o_: Output directory. (default: output)
-- _log_level_ or _-l_: Log level. Options: DEBUG, INFO, ERROR. (default: INFO)
+- _--dataset_dir_ or _-ds_: Directory containing clean (`clean.csv`) and dirty data (`dirty.csv`, can be configured via _-dd_), as well as the functional dependencies (`fds.csv` or `fds.txt`). Required argument.
+- _--dirty_data_file_ or _-dd_: Dirty data file, relative to the given dataset_dir. (default: `dirty.csv`)
+- _--output_dir_ or _-o_: Output directory. (default: `output`)
+- _--n_rows_ or _-n_: Number of rows to repair (still uses full dataset to build graphs). (default: all rows)
+- _--log_level_ or _-l_: Log level. Options: DEBUG, INFO, WARNING, ERROR. (default: INFO)
+- _--enable_plotting_ or _-p_: Enable plotting of the graphs.
 
 Run the tests with `uv run pytest`.
 
@@ -37,6 +39,7 @@ Run the tests with `uv run pytest`.
 
 - `horizon/` — core model + repair pipeline. `utils/` holds `FunctionalDependency`,
   `get_fds()` and `load_table()`; `FDGraph.py`, `horizon.py`, `static_fd_analysis.py` the repair.
+- `benchmarks/` — code to run and plot Horizon benchmarks and comparisons.
 - `eval/` — dataset/FD characterization metrics; `characterize()` / `characterize_lazy()`.
 - `inject.py` + `notebooks/build_injected.ipynb` — rebuild BART-injected dirty tables from `bart/`.
 - `remote_data/` — fetch/upload dataset tables to Hugging Face.
