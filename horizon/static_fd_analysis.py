@@ -1,5 +1,6 @@
 import json
 import time
+from collections import deque
 from pathlib import Path
 
 import igraph as ig
@@ -16,6 +17,10 @@ ig.config["plotting.backend"] = "matplotlib"
 
 
 class FDGraph:
+    # Class variables
+    _set_of_fds: SetOfFDs
+    _fd_g: Graph
+    _scc_g: Graph
     _components: ig.VertexClustering
 
     def __init__(
@@ -25,13 +30,13 @@ class FDGraph:
         self._set_of_fds = set_of_fds
 
         # Build FD graph
-        self._g: Graph = self.build_fd_graph()
+        self._fd_g = self._build_fd_graph()
 
         # Turn FD graph into SCCG
-        self._scc_g: Graph = self.find_strongly_connected_components()
+        self._scc_g = self._find_strongly_connected_components()
 
     # Build FD graph
-    def build_fd_graph(self) -> Graph:
+    def _build_fd_graph(self) -> Graph:
         logger.info(
             f"Building FD graph from {len(self._set_of_fds)} functional dependencies"
         )
@@ -56,10 +61,12 @@ class FDGraph:
         return g
 
     # Find strongly connected components and build SCC graph
-    def find_strongly_connected_components(self) -> Graph:
+    def _find_strongly_connected_components(self) -> Graph:
+        """Finds strongly connected components and builds SCC graph."""
+
         logger.info("Finding strongly connected components...")
         # Compute components
-        components: ig.VertexClustering = Graph.components(self._g)
+        components: ig.VertexClustering = Graph.components(self._fd_g)
         self._components = components
         logger.debug(f"Found {len(components)} components")
 
@@ -77,79 +84,17 @@ class FDGraph:
         )
         return scc_g
 
-    def plot_graphs(self, dataset_name: str, output_dir: Path) -> None:
-        # Visualize FD graph
-        logger.debug("Saving FD graph visualization")
-        g_v_count: int = self._g.vcount()
-        plt.figure(figsize=(max(7, g_v_count / 2), max(7, g_v_count / 2)))
-
-        ig.plot(
-            self._g,
-            layout="tree",
-            vertex_color="green",
-            vertex_label=self._g.vs["name"],
-            vertex_label_dist=1.5,
-            edge_label=[
-                self._set_of_fds[fd_index].order if fd_index is not None else None
-                for fd_index in self._g.es["fd_index"]
-            ],
-        )
-
-        plt.gca().invert_yaxis()  # Plot tree with root at top
-        plt.savefig(str(output_dir / f"{dataset_name}_fd_graph.png"))
-        plt.clf()
-
-        # Visualize components
-        logger.debug("Saving component visualization")
-        plt.figure(figsize=(max(7, g_v_count / 2), max(7, g_v_count / 2)))
-
-        ig.plot(
-            self._components,
-            layout="tree",
-            palette=ig.RainbowPalette(),
-            vertex_label=self._g.vs["name"],
-            vertex_label_dist=1.5,
-        )
-
-        plt.gca().invert_yaxis()  # Plot tree with root at top
-        plt.savefig(str(output_dir / f"{dataset_name}_fd_graph_components.png"))
-        plt.clf()
-
-        # Visualize SCCG
-        logger.debug("Saving SCC graph visualization")
-        plt.figure(
-            figsize=(max(7, self._scc_g.vcount() / 2), max(7, self._scc_g.vcount() / 2))
-        )
-
-        ig.plot(
-            self._scc_g,
-            layout="tree",
-            vertex_color="green",
-            vertex_label=self._scc_g.vs["name"],
-            vertex_label_dist=1.5,
-            edge_label=[
-                [
-                    self._set_of_fds[fd_index].order if fd_index is not None else None
-                    for fd_index in fd_indices
-                ]
-                for fd_indices in self._scc_g.es["fd_index"]
-            ],
-        )
-
-        plt.gca().invert_yaxis()  # Plot tree with root at top
-        plt.savefig(str(output_dir / f"{dataset_name}_scc_fd_graph.png"))
-        plt.clf()
-
-    # Implements Hierholzer's linear time algorithm for constructing an Eulerian cycle/tour
-    def order_subg(
+    def _order_subg(
         self, sub_g: Graph, start_v: int, order_counter: int
     ) -> list[FunctionalDependency]:
+        """Implements Hierholzer's linear time algorithm for constructing an Eulerian cycle/tour."""
+
         sub_order: list[FunctionalDependency] = []
 
         # Graph attributes
         n: int = sub_g.vcount()
-        in_degrees: list[int] = [sub_g.indegree(i) for i in range(n)]
-        out_degrees: list[int] = [sub_g.outdegree(i) for i in range(n)]
+        in_degrees: list[int] = sub_g.indegree()
+        out_degrees: list[int] = sub_g.outdegree()
 
         # Check requirements for Eulerian cycle/tour
         uneven_vertices: list[int] = [
@@ -234,23 +179,31 @@ class FDGraph:
 
         return sub_order
 
-    # Implements Kahn's Algorithm for computing a topological sorting using BFS
-    def get_topological_sorting(
-        self, component_g: Graph, order_counter: int
+    def _get_topological_sorting(
+        self, g: Graph, order_counter: int
     ) -> list[FunctionalDependency]:
+        """Implements Kahn's Algorithm for computing a topological sorting using BFS."""
+
         ordered_fds: list[FunctionalDependency] = []
 
         # Start with vertices of graph with in-degree 0
-        vertices: list[ig.Vertex] = [v for v in component_g.vs.select(_indegree_eq=0)]
+        v_queue: list[ig.Vertex] = [v for v in g.vs.select(_indegree_eq=0)]
 
-        while vertices:
-            component_v = vertices.pop(0)
+        # Bound attributes = vertices with in-degree 0
+        # If vertex is a SCC, pick the first (arbitrary order)
+        self._set_of_fds.bound_attributes.update([v["name"][0] for v in v_queue])
+        logger.info(
+            f"Identified {len(self._set_of_fds.bound_attributes)} bound attributes: {self._set_of_fds.bound_attributes}"
+        )
 
-            # If component contains more than 1 vertex
-            if len(component_v["name"]) > 1:
-                # Compute order of this component via Eulerian tour of subgraph
-                sub_g = self._g.induced_subgraph(
-                    self._g.vs.select(name_in=component_v["name"]),
+        while v_queue:
+            v: ig.Vertex = v_queue.pop(0)
+
+            # If scc contains more than 1 vertex
+            if len(v["name"]) > 1:
+                # Compute order of this scc via Eulerian tour of subgraph
+                sub_g = self._fd_g.induced_subgraph(
+                    self._fd_g.vs.select(name_in=v["name"]),
                     implementation="create_from_scratch",
                 )
                 # Start with last seen vertex, if possible
@@ -260,38 +213,37 @@ class FDGraph:
                     and len(sub_g.vs.select(name=ordered_fds[-1].rhs)) == 1
                     else 0
                 )
-                sub_order: list[FunctionalDependency] = self.order_subg(
+                sub_order: list[FunctionalDependency] = self._order_subg(
                     sub_g, start_index, order_counter
                 )
                 ordered_fds += sub_order
                 order_counter += len(sub_order)
 
             # Iterate over neighbors
-            for next_vertex in component_g.neighbors(component_v, mode="out"):
+            for w in g.neighbors(v, mode="out"):
                 # Add edge information to ordering and delete it
-                edge: ig.Edge = component_g.es.find(
-                    _source=component_v, _target=next_vertex
-                )
+                edge: ig.Edge = g.es.find(_source=v, _target=w)
                 for fd_index in edge["fd_index"]:
                     # Skip edges which represent multiple LHS attributes
                     if fd_index is None:
                         continue
-                    # Add order to FD and append to sub-component order
+                    # Add order to FD and append to FD order
                     self._set_of_fds[fd_index].order = order_counter
                     ordered_fds.append(self._set_of_fds[fd_index])
                     order_counter += 1
-                component_g.delete_edges(edge)
+                g.delete_edges(edge)
                 # If neighboring vertex now has in-degree 0, add it to vertices queue
-                if component_g.indegree(next_vertex) == 0:
-                    vertices.append(component_g.vs[next_vertex])
+                if g.indegree(w) == 0:
+                    v_queue.append(g.vs[w])
 
         return ordered_fds
 
     def order_fds(self) -> list[list[FunctionalDependency]]:
+        """Orders each independent sub-component of the FD graph."""
         # Perform topological sorting of each sub-component of SCCG
         order_counter: int = 0
         ordered_fds: list[list[FunctionalDependency]] = [
-            self.get_topological_sorting(sub_g, order_counter)
+            self._get_topological_sorting(sub_g, order_counter)
             for sub_g in self._scc_g.decompose(mode="weak")
         ]
 
@@ -302,12 +254,91 @@ class FDGraph:
 
         return ordered_fds
 
+    def dfs_tree(self, start_attribute: str) -> list[int]:
+        """Constructs a DFS tree and returns all visited edges."""
+        start_v: int = self._fd_g.vs.find(name=start_attribute).index
+        stack: deque[int] = deque([start_v])
+        visited_v: set[int] = set([start_v])
+        dfs_edges: list[int] = []
+        while stack:
+            v: int = stack.pop()
+            for w in self._fd_g.neighbors(v, mode="out"):
+                if w in visited_v:
+                    continue
+                visited_v.add(w)
+                stack.append(w)
+                dfs_edges.append(self._fd_g.es.find(_source=v, _target=w)["fd_index"])
+        return dfs_edges
+
+    def plot_graphs(self, dataset_name: str, output_dir: Path) -> None:
+        # Visualize FD graph
+        logger.debug("Saving FD graph visualization")
+        g_v_count: int = self._fd_g.vcount()
+        plt.figure(figsize=(max(7, g_v_count / 2), max(7, g_v_count / 2)))
+
+        ig.plot(
+            self._fd_g,
+            layout="tree",
+            vertex_color="green",
+            vertex_label=self._fd_g.vs["name"],
+            vertex_label_dist=1.5,
+            edge_label=[
+                self._set_of_fds[fd_index].order if fd_index is not None else None
+                for fd_index in self._fd_g.es["fd_index"]
+            ],
+        )
+
+        plt.gca().invert_yaxis()  # Plot tree with root at top
+        plt.savefig(str(output_dir / f"{dataset_name}_fd_graph.png"))
+        plt.clf()
+
+        # Visualize components
+        logger.debug("Saving component visualization")
+        plt.figure(figsize=(max(7, g_v_count / 2), max(7, g_v_count / 2)))
+
+        ig.plot(
+            self._components,
+            layout="tree",
+            palette=ig.RainbowPalette(),
+            vertex_label=self._fd_g.vs["name"],
+            vertex_label_dist=1.5,
+        )
+
+        plt.gca().invert_yaxis()  # Plot tree with root at top
+        plt.savefig(str(output_dir / f"{dataset_name}_fd_graph_components.png"))
+        plt.clf()
+
+        # Visualize SCCG
+        logger.debug("Saving SCC graph visualization")
+        plt.figure(
+            figsize=(max(7, self._scc_g.vcount() / 2), max(7, self._scc_g.vcount() / 2))
+        )
+
+        ig.plot(
+            self._scc_g,
+            layout="tree",
+            vertex_color="green",
+            vertex_label=self._scc_g.vs["name"],
+            vertex_label_dist=1.5,
+            edge_label=[
+                [
+                    self._set_of_fds[fd_index].order if fd_index is not None else None
+                    for fd_index in fd_indices
+                ]
+                for fd_indices in self._scc_g.es["fd_index"]
+            ],
+        )
+
+        plt.gca().invert_yaxis()  # Plot tree with root at top
+        plt.savefig(str(output_dir / f"{dataset_name}_scc_fd_graph.png"))
+        plt.clf()
+
     def graph_data(self) -> dict:
         """Structured, JSON-serialisable description of the graphs for the UI.
 
         Takes computed FD graph, SCCG, and FD order data and stores it as JSON data.
         """
-        g: Graph = self._g
+        g: Graph = self._fd_g
         comps: ig.VertexClustering = self._components
         scc_g: Graph = self._scc_g
 
@@ -378,17 +409,24 @@ def get_ordered_fds(
     logger.info("Performing topological sorting...")
     ordered_fds: list[list[FunctionalDependency]] = fd_graph.order_fds()
 
-    set_of_fds.bound_attributes = {
-        fds[0].lhs for fds in ordered_fds if not isinstance(fds[0].lhs, tuple)
-    }  # TODO: Support multiple attributes on LHS
-    logger.info(
-        f"Identified {len(set_of_fds.bound_attributes)} bound attributes: {set_of_fds.bound_attributes}"
-    )
-
     logger.info(f"Computed traversal order with {len(ordered_fds)} groups")
     logger.debug(
         [f"Group {i}: {len(fd_group)} FDs" for i, fd_group in enumerate(ordered_fds)]
     )
+    logger.debug(f"Order: {ordered_fds}")
+
+    # Mark cyclic FDs (used later to skip back-edges in FD pattern graph quality computation)
+    non_cyclic_fds: set = set(
+        [
+            fd_index
+            for v in set_of_fds.bound_attributes
+            for fd_index in fd_graph.dfs_tree(v)
+        ]
+    )
+    for i in range(len(set_of_fds)):
+        set_of_fds[i].cyclic = False if i in non_cyclic_fds else True
+
+    logger.debug([f"{str(fd)}: {fd.cyclic}" for fd in set_of_fds])
 
     # If plotting is enabled, save graph visualizations under output directory
     if enable_plotting:

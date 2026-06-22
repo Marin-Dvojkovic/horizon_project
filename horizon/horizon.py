@@ -129,10 +129,10 @@ def repair_tuple(
 
 
 def repair_dirty_data(
-    dirty_data: pl.DataFrame,
+    dirty_data_path: Path,
     ordered_fds: list[list[FunctionalDependency]],
     fd_pattern_graph: FDPatternGraph,
-) -> tuple[dict[str, list[str]], list[PatternExpression]]:
+) -> tuple[pl.DataFrame, list[PatternExpression]]:
     # Compute repairs for dirty data
     pattern_expressions: list[PatternExpression] = []
     repair_table: dict[FunctionalDependency, dict[str, str]] = {
@@ -143,8 +143,11 @@ def repair_dirty_data(
     # and especially df[t, col] = val writes rebuild whole Arrow columns
     # (O(n) each), making the loop O(n^2). dict-of-lists makes them O(1);
     # rebuild the frame once at the end.
+    dirty_data: pl.DataFrame = load_data(dirty_data_path)
     columns: dict[str, list[str]] = dirty_data.to_dict(as_series=False)
     n_tuples: int = len(dirty_data)
+    # Clear df to save memory, columns is used to read the data
+    dirty_data.clear()
 
     logger.info("Starting tuple repair process...")
     start: float = time.time()
@@ -168,7 +171,10 @@ def repair_dirty_data(
     logger.info(f"Tuple repair process completed in {elapsed_time:.2f}s")
     logger.debug(f"Repair table:\n{repair_table}")
 
-    return columns, pattern_expressions
+    # Rebuild the data frame from the repaired columns
+    cleaned_data: pl.DataFrame = pl.DataFrame(columns)
+
+    return cleaned_data, pattern_expressions
 
 
 def main(dataset_dir: Path, output_dir: Path, dirty_data_file: str) -> None:
@@ -199,9 +205,8 @@ def main(dataset_dir: Path, output_dir: Path, dirty_data_file: str) -> None:
     fd_pattern_graph: FDPatternGraph = FDPatternGraph(str(dirty_data_path), set_of_fds)
 
     # Compute repairs for dirty data
-    dirty_data: pl.DataFrame = load_data(dirty_data_path)
-    columns, pattern_expressions = repair_dirty_data(
-        dirty_data, ordered_fds, fd_pattern_graph
+    cleaned_data, pattern_expressions = repair_dirty_data(
+        dirty_data_path, ordered_fds, fd_pattern_graph
     )
 
     # Create output directory
@@ -209,8 +214,7 @@ def main(dataset_dir: Path, output_dir: Path, dirty_data_file: str) -> None:
         logger.info(f"Creating output directory under {output_dir}")
     output_dir.mkdir(exist_ok=True)
 
-    # Save cleaned data (rebuild the frame from the repaired columns)
-    cleaned_data: pl.DataFrame = pl.DataFrame(columns)
+    # Save cleaned data
     data_output_path: Path = output_dir / f"{dataset_name}_cleaned_data.csv"
     cleaned_data.write_csv(data_output_path)
     logger.info(f"Cleaned data saved to {data_output_path}")
@@ -228,7 +232,7 @@ if __name__ == "__main__":
     args: argparse.Namespace = parser.parse_args()
 
     # Setup logging
-    setup_logging(log_level=getattr(logging, args.log_level))
+    setup_logging(log_level=getattr(logging, args.log_level.upper()))
 
     logger.info(f"Horizon pipeline started with arguments: {vars(args)}")
 

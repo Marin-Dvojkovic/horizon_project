@@ -1,5 +1,11 @@
+"""
+FunctionalDependency: Representing a functional dependency with one value on the RHS and potentially multiple values on the RHS.
+"""
+
+
 class FunctionalDependency:
     _order: int | None
+    _cyclic: bool | None
 
     def __init__(
         self, lhs: tuple | list | str, rhs: str, order: int | None = None
@@ -10,6 +16,7 @@ class FunctionalDependency:
             self._lhs = tuple(lhs)
         self._rhs = rhs
         self._order = order
+        self._cyclic = None
 
     @property
     def lhs(self) -> str | tuple:
@@ -28,6 +35,14 @@ class FunctionalDependency:
     @order.setter
     def order(self, order: int) -> None:
         self._order = order
+
+    @property
+    def cyclic(self) -> bool | None:
+        return self._cyclic
+
+    @cyclic.setter
+    def cyclic(self, cyclic: bool) -> None:
+        self._cyclic = cyclic
 
     def __repr__(self) -> str:
         lhs_str = ", ".join(self._lhs)

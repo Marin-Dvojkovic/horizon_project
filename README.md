@@ -41,6 +41,8 @@ Run the tests with `uv run pytest`.
 - `inject.py` + `notebooks/build_injected.ipynb` — rebuild BART-injected dirty tables from `bart/`.
 - `remote_data/` — fetch/upload dataset tables to Hugging Face.
 - `datasets/` — local data (gitignored), one folder per table; pulled from HF.
+- `docs/` — code documentation with Doxygen.
+- `tests/` — simple test cases confirming the correctness of the implementation.
 
 ## Remote data
 

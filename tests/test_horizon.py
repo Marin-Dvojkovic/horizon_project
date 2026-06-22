@@ -6,7 +6,6 @@ from polars.testing import assert_frame_equal
 
 from horizon.fd_pattern_graph import FDPatternGraph
 from horizon.fds.fd import FunctionalDependency
-from horizon.fds.pattern_expression import PatternExpression
 from horizon.fds.set_of_fds import SetOfFDs
 from horizon.horizon import load_data, repair_dirty_data
 from horizon.static_fd_analysis import get_ordered_fds
@@ -42,15 +41,12 @@ def repair_dirty_data_test(dataset_name: str) -> None:
     fd_pattern_graph: FDPatternGraph = FDPatternGraph(str(dirty_data_path), set_of_fds)
 
     # Compute repairs for dirty data
-    dirty_data: pl.DataFrame = load_data(dirty_data_path)
-    pattern_expressions: list[PatternExpression] = repair_dirty_data(
-        dirty_data, ordered_fds, fd_pattern_graph
-    )
+    cleaned_data, _ = repair_dirty_data(dirty_data_path, ordered_fds, fd_pattern_graph)
 
     # Assert correctness of repairs
     clean_data: pl.DataFrame = load_data(clean_data_path)
 
-    assert_frame_equal(dirty_data, clean_data)
+    assert_frame_equal(cleaned_data, clean_data)
 
 
 def test_repair_datasets(all_test_datasets) -> None:
