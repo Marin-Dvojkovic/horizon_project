@@ -23,6 +23,7 @@ Lives in `dataset_eval.py`.
 | `avg_redundancy(df)` | mean of `column_redundancy(col)` across columns | `[0, 1]` | **rewrite** (replaces `avg_redundancy_df` / `_df_2`, removes the duplicate) |
 | `avg_value_length(df)` | mean length of stringified non-null values, averaged across columns | `[0, ∞)` — not bounded, but size-independent | port to polars, keep semantics |
 | `avg_frequency(series)` | `non_null_count / unique_count` — average number of times a value appears in the column (denormalised; the paper's `avgRed`) | `[1, N]` | **new**, helper for the next row |
+| `redundancy_per_column(df)` | `avg_frequency(col)` for every column, keyed by name — per-column view of the paper's avg. redundancy | `dict[str, [1, N]]` | **new**, maps `avg_frequency` over the df |
 | `low_redundancy_col_count(df, threshold=5)` | # columns whose `avg_frequency` is ≤ threshold | `[0, n_cols]` | **new** — uses the denormalised metric so the threshold reads naturally. Default `5` matches paper Table 1 |
 | `n_rows(df)`, `n_cols(df)` | shape | — | **new**, trivial |
 
