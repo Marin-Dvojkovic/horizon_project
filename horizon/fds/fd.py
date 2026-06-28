@@ -25,6 +25,13 @@ class FunctionalDependency:
         return self._lhs
 
     @property
+    def lhs_attributes(self) -> tuple:
+        # LHS as a tuple of attribute names regardless of arity. Unlike `lhs`,
+        # which returns a bare str for a singleton LHS — iterating that str
+        # yields characters, not attributes. Use this whenever LHS is a column set.
+        return self._lhs
+
+    @property
     def rhs(self) -> str:
         return self._rhs
 
