@@ -19,7 +19,7 @@
     <!-- ****************************************************
                     DEPENDENCIES  (one DC per FD in fds.csv)
     **************************************************** -->
-    <dependencies><![CDATA[DCs: 
+    <dependencies><![CDATA[DCs:
 
             e1: clean(facility_id: $facility_id1, facility_name: $facility_name1, address: $address1, city_town: $city_town1, state: $state1, zip_code: $zip_code1, county_parish: $county_parish1, telephone_number: $telephone_number1, measure_id: $measure_id1, measure_name: $measure_name1, compared_to_national: $compared_to_national1, score: $score1, footnote: $footnote1, start_date: $start_date1, end_date: $end_date1),
             clean(facility_id: $facility_id2, facility_name: $facility_name2, address: $address2, city_town: $city_town2, state: $state2, zip_code: $zip_code2, county_parish: $county_parish2, telephone_number: $telephone_number2, measure_id: $measure_id2, measure_name: $measure_name2, compared_to_national: $compared_to_national2, score: $score2, footnote: $footnote2, start_date: $start_date2, end_date: $end_date2),
@@ -33,22 +33,22 @@
         
             e3: clean(facility_id: $facility_id1, facility_name: $facility_name1, address: $address1, city_town: $city_town1, state: $state1, zip_code: $zip_code1, county_parish: $county_parish1, telephone_number: $telephone_number1, measure_id: $measure_id1, measure_name: $measure_name1, compared_to_national: $compared_to_national1, score: $score1, footnote: $footnote1, start_date: $start_date1, end_date: $end_date1),
             clean(facility_id: $facility_id2, facility_name: $facility_name2, address: $address2, city_town: $city_town2, state: $state2, zip_code: $zip_code2, county_parish: $county_parish2, telephone_number: $telephone_number2, measure_id: $measure_id2, measure_name: $measure_name2, compared_to_national: $compared_to_national2, score: $score2, footnote: $footnote2, start_date: $start_date2, end_date: $end_date2),
-                $zip_code1 == $zip_code2, $county_parish1 != $county_parish2 -> #fail. 
+                $facility_id1 == $facility_id2, $telephone_number1 != $telephone_number2 -> #fail. 
 
         
             e4: clean(facility_id: $facility_id1, facility_name: $facility_name1, address: $address1, city_town: $city_town1, state: $state1, zip_code: $zip_code1, county_parish: $county_parish1, telephone_number: $telephone_number1, measure_id: $measure_id1, measure_name: $measure_name1, compared_to_national: $compared_to_national1, score: $score1, footnote: $footnote1, start_date: $start_date1, end_date: $end_date1),
             clean(facility_id: $facility_id2, facility_name: $facility_name2, address: $address2, city_town: $city_town2, state: $state2, zip_code: $zip_code2, county_parish: $county_parish2, telephone_number: $telephone_number2, measure_id: $measure_id2, measure_name: $measure_name2, compared_to_national: $compared_to_national2, score: $score2, footnote: $footnote2, start_date: $start_date2, end_date: $end_date2),
-                $zip_code1 == $zip_code2, $state1 != $state2 -> #fail. 
+                $zip_code1 == $zip_code2, $county_parish1 != $county_parish2 -> #fail. 
 
         
             e5: clean(facility_id: $facility_id1, facility_name: $facility_name1, address: $address1, city_town: $city_town1, state: $state1, zip_code: $zip_code1, county_parish: $county_parish1, telephone_number: $telephone_number1, measure_id: $measure_id1, measure_name: $measure_name1, compared_to_national: $compared_to_national1, score: $score1, footnote: $footnote1, start_date: $start_date1, end_date: $end_date1),
             clean(facility_id: $facility_id2, facility_name: $facility_name2, address: $address2, city_town: $city_town2, state: $state2, zip_code: $zip_code2, county_parish: $county_parish2, telephone_number: $telephone_number2, measure_id: $measure_id2, measure_name: $measure_name2, compared_to_national: $compared_to_national2, score: $score2, footnote: $footnote2, start_date: $start_date2, end_date: $end_date2),
-                $address1 == $address2, $city_town1 == $city_town2, $zip_code1 != $zip_code2 -> #fail. 
+                $zip_code1 == $zip_code2, $state1 != $state2 -> #fail. 
 
         
             e6: clean(facility_id: $facility_id1, facility_name: $facility_name1, address: $address1, city_town: $city_town1, state: $state1, zip_code: $zip_code1, county_parish: $county_parish1, telephone_number: $telephone_number1, measure_id: $measure_id1, measure_name: $measure_name1, compared_to_national: $compared_to_national1, score: $score1, footnote: $footnote1, start_date: $start_date1, end_date: $end_date1),
             clean(facility_id: $facility_id2, facility_name: $facility_name2, address: $address2, city_town: $city_town2, state: $state2, zip_code: $zip_code2, county_parish: $county_parish2, telephone_number: $telephone_number2, measure_id: $measure_id2, measure_name: $measure_name2, compared_to_national: $compared_to_national2, score: $score2, footnote: $footnote2, start_date: $start_date2, end_date: $end_date2),
-                $address1 == $address2, $facility_name1 == $facility_name2, $zip_code1 != $zip_code2 -> #fail. 
+                $telephone_number1 == $telephone_number2, $state1 != $state2 -> #fail. 
 
         
             e7: clean(facility_id: $facility_id1, facility_name: $facility_name1, address: $address1, city_town: $city_town1, state: $state1, zip_code: $zip_code1, county_parish: $county_parish1, telephone_number: $telephone_number1, measure_id: $measure_id1, measure_name: $measure_name1, compared_to_national: $compared_to_national1, score: $score1, footnote: $footnote1, start_date: $start_date1, end_date: $end_date1),
@@ -100,10 +100,10 @@
             <vioGenQueries>
             <vioGenQuery id="e1"><comparison>(address1 != address2)</comparison><percentage>5</percentage></vioGenQuery>
             <vioGenQuery id="e2"><comparison>(facility_name1 != facility_name2)</comparison><percentage>5</percentage></vioGenQuery>
-            <vioGenQuery id="e3"><comparison>(county_parish1 != county_parish2)</comparison><percentage>5</percentage></vioGenQuery>
-            <vioGenQuery id="e4"><comparison>(state1 != state2)</comparison><percentage>5</percentage></vioGenQuery>
-            <vioGenQuery id="e5"><comparison>(zip_code1 != zip_code2)</comparison><percentage>5</percentage></vioGenQuery>
-            <vioGenQuery id="e6"><comparison>(zip_code1 != zip_code2)</comparison><percentage>5</percentage></vioGenQuery>
+            <vioGenQuery id="e3"><comparison>(telephone_number1 != telephone_number2)</comparison><percentage>5</percentage></vioGenQuery>
+            <vioGenQuery id="e4"><comparison>(county_parish1 != county_parish2)</comparison><percentage>5</percentage></vioGenQuery>
+            <vioGenQuery id="e5"><comparison>(state1 != state2)</comparison><percentage>5</percentage></vioGenQuery>
+            <vioGenQuery id="e6"><comparison>(state1 != state2)</comparison><percentage>5</percentage></vioGenQuery>
             <vioGenQuery id="e7"><comparison>(measure_name1 != measure_name2)</comparison><percentage>5</percentage></vioGenQuery>
             <vioGenQuery id="e8"><comparison>(measure_id1 != measure_id2)</comparison><percentage>5</percentage></vioGenQuery>
             </vioGenQueries>
@@ -122,7 +122,7 @@
                 <attribute table="clean" name="measure_id"><strategy>TypoActiveDomain</strategy></attribute>
                 <attribute table="clean" name="measure_name"><strategy>TypoActiveDomain</strategy></attribute>
                 <attribute table="clean" name="state"><strategy>TypoActiveDomain</strategy></attribute>
-                <attribute table="clean" name="zip_code"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="telephone_number"><strategy>TypoActiveDomain</strategy></attribute>
             </attributeStrategy>
         </dirtyStrategies>
 

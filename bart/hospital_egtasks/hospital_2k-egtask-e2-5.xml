@@ -31,13 +31,13 @@
                     <percentage>5</percentage>
                     <attributes>
                     <attribute>address</attribute>
-                    <attribute>city_town</attribute>
                     <attribute>county_parish</attribute>
                     <attribute>facility_id</attribute>
                     <attribute>facility_name</attribute>
                     <attribute>measure_id</attribute>
                     <attribute>measure_name</attribute>
                     <attribute>state</attribute>
+                    <attribute>telephone_number</attribute>
                     <attribute>zip_code</attribute>
                     </attributes>
                 </table>
@@ -49,13 +49,13 @@
             </defaultStrategy>
             <attributeStrategy>
                 <attribute table="clean" name="address"><strategy>TypoActiveDomain</strategy></attribute>
-                <attribute table="clean" name="city_town"><strategy>TypoActiveDomain</strategy></attribute>
                 <attribute table="clean" name="county_parish"><strategy>TypoActiveDomain</strategy></attribute>
                 <attribute table="clean" name="facility_id"><strategy>TypoActiveDomain</strategy></attribute>
                 <attribute table="clean" name="facility_name"><strategy>TypoActiveDomain</strategy></attribute>
                 <attribute table="clean" name="measure_id"><strategy>TypoActiveDomain</strategy></attribute>
                 <attribute table="clean" name="measure_name"><strategy>TypoActiveDomain</strategy></attribute>
                 <attribute table="clean" name="state"><strategy>TypoActiveDomain</strategy></attribute>
+                <attribute table="clean" name="telephone_number"><strategy>TypoActiveDomain</strategy></attribute>
                 <attribute table="clean" name="zip_code"><strategy>TypoActiveDomain</strategy></attribute>
             </attributeStrategy>
         </dirtyStrategies>
