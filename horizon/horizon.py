@@ -70,16 +70,15 @@ def load_fds(dataset_dir: Path, data_csv_path: Path) -> SetOfFDs:
     return fds
 
 
-def load_data(data_csv_path: Path) -> pl.DataFrame:
-    # Check csv path
-    if not data_csv_path.exists:
-        logger.error(f"CSV file {str(data_csv_path)} does not exist")
-        raise ValueError(f"CSV file {str(data_csv_path)} does not exist")
+def load_data(data_path: Path) -> pl.DataFrame:
+    # Check data path
+    if not data_path.exists():
+        logger.error(f"Data file {str(data_path)} does not exist")
+        raise ValueError(f"Data file {str(data_path)} does not exist")
 
     # Load dirty data
     logger.info("Loading dirty data...")
-    # dirty_data: pl.DataFrame = pl.read_csv(data_csv_path)
-    data: pl.DataFrame = utils.loaders.load_table(data_csv_path)
+    data: pl.DataFrame = utils.loaders.load_table(data_path)
     logger.info(
         f"Loaded dirty data with {len(data)} tuples and {len(data.columns)} columns"
     )
@@ -132,7 +131,12 @@ def repair_dirty_data(
     dirty_data_path: Path,
     ordered_fds: list[list[FunctionalDependency]],
     fd_pattern_graph: FDPatternGraph,
+    collect_pattern_expressions: bool = True,
 ) -> tuple[pl.DataFrame, list[PatternExpression]]:
+    # Each tuple's PatternExpression is needed only while repairing that tuple.
+    # Retaining all of them (for the lineage output) costs O(n_tuples) objects;
+    # set collect_pattern_expressions=False to free each one immediately when the
+    # lineage is not needed (e.g. runtime benchmarks).
     # Compute repairs for dirty data
     pattern_expressions: list[PatternExpression] = []
     repair_table: dict[FunctionalDependency, dict[str, str]] = {
@@ -141,13 +145,33 @@ def repair_dirty_data(
 
     # Repair on Python lists, not the Polars frame: per-cell df[t, col] reads
     # and especially df[t, col] = val writes rebuild whole Arrow columns
-    # (O(n) each), making the loop O(n^2). dict-of-lists makes them O(1);
-    # rebuild the frame once at the end.
+    # (O(n) each), making the loop O(n^2). dict-of-lists makes them O(1).
+    # Only attributes appearing in an FD are read or written, so pull just those
+    # into lists; columns the loop never touches stay in the compact Arrow frame
+    # (a Python str list costs several times more per cell) and are stitched back,
+    # in their original positions, at the end.
     dirty_data: pl.DataFrame = load_data(dirty_data_path)
-    columns: dict[str, list[str]] = dirty_data.to_dict(as_series=False)
     n_tuples: int = len(dirty_data)
-    # Clear df to save memory, columns is used to read the data
-    dirty_data.clear()
+    original_order: list[str] = dirty_data.columns
+
+    touched_cols: list[str] = []
+    seen: set[str] = set()
+    for fds in ordered_fds:
+        for fd in fds:
+            # composite-LHS FDs are skipped by the repair loop below
+            if isinstance(fd.lhs, tuple):
+                continue
+            for col in (fd.lhs, fd.rhs):
+                if col not in seen:
+                    seen.add(col)
+                    touched_cols.append(col)
+
+    columns: dict[str, list[str]] = dirty_data.select(touched_cols).to_dict(
+        as_series=False
+    )
+    # Drop the listed columns so their Arrow buffers are freed; the untouched
+    # columns stay (zero-copy) to pass through the repair unchanged.
+    dirty_data = dirty_data.drop(touched_cols)
 
     logger.info("Starting tuple repair process...")
     start: float = time.time()
@@ -161,7 +185,8 @@ def repair_dirty_data(
                     continue
                 repair_tuple(columns, t, fd, repair_table, p_exp, fd_pattern_graph)
 
-        pattern_expressions.append(p_exp)
+        if collect_pattern_expressions:
+            pattern_expressions.append(p_exp)
         if (t + 1) % max(1, n_tuples // 10) == 0:
             logger.info(f"Repaired {t + 1}/{n_tuples} tuples")
 
@@ -171,8 +196,11 @@ def repair_dirty_data(
     logger.info(f"Tuple repair process completed in {elapsed_time:.2f}s")
     logger.debug(f"Repair table:\n{repair_table}")
 
-    # Rebuild the data frame from the repaired columns
-    cleaned_data: pl.DataFrame = pl.DataFrame(columns)
+    # Stitch the repaired columns back onto the untouched ones, restoring the
+    # original column order.
+    cleaned_data: pl.DataFrame = dirty_data.with_columns(
+        [pl.Series(name, columns[name]) for name in touched_cols]
+    ).select(original_order)
 
     return cleaned_data, pattern_expressions
 

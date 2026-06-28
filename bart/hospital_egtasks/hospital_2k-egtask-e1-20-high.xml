@@ -83,7 +83,7 @@
         <exportDirtyDB>false</exportDirtyDB>
         <exportDirtyDBType>CSV</exportDirtyDBType>
         <exportCellChanges full="true">true</exportCellChanges>
-        <exportCellChangesPath>Temp/bart/hospital_5_med_n2000/changes.csv</exportCellChangesPath>
+        <exportCellChangesPath>Temp/bart/hospital_20_high_n2000/changes.csv</exportCellChangesPath>
 
         <generateAllChanges>false</generateAllChanges>
         <!-- true: changes from different FDs may NOT share a cell/context, so
@@ -98,22 +98,14 @@
         <errorPercentages>
             <defaultPercentage>0.0</defaultPercentage>
             <vioGenQueries>
-            <vioGenQuery id="e1"><comparison>(address1 != address2)</comparison><percentage>2.5</percentage></vioGenQuery>
-            <vioGenQuery id="e1"><comparison>(facility_id1 == facility_id2)</comparison><percentage>2.5</percentage></vioGenQuery>
-            <vioGenQuery id="e2"><comparison>(facility_name1 != facility_name2)</comparison><percentage>2.5</percentage></vioGenQuery>
-            <vioGenQuery id="e2"><comparison>(facility_id1 == facility_id2)</comparison><percentage>2.5</percentage></vioGenQuery>
-            <vioGenQuery id="e3"><comparison>(telephone_number1 != telephone_number2)</comparison><percentage>2.5</percentage></vioGenQuery>
-            <vioGenQuery id="e3"><comparison>(facility_id1 == facility_id2)</comparison><percentage>2.5</percentage></vioGenQuery>
-            <vioGenQuery id="e4"><comparison>(county_parish1 != county_parish2)</comparison><percentage>2.5</percentage></vioGenQuery>
-            <vioGenQuery id="e4"><comparison>(zip_code1 == zip_code2)</comparison><percentage>2.5</percentage></vioGenQuery>
-            <vioGenQuery id="e5"><comparison>(state1 != state2)</comparison><percentage>2.5</percentage></vioGenQuery>
-            <vioGenQuery id="e5"><comparison>(zip_code1 == zip_code2)</comparison><percentage>2.5</percentage></vioGenQuery>
-            <vioGenQuery id="e6"><comparison>(state1 != state2)</comparison><percentage>2.5</percentage></vioGenQuery>
-            <vioGenQuery id="e6"><comparison>(telephone_number1 == telephone_number2)</comparison><percentage>2.5</percentage></vioGenQuery>
-            <vioGenQuery id="e7"><comparison>(measure_name1 != measure_name2)</comparison><percentage>2.5</percentage></vioGenQuery>
-            <vioGenQuery id="e7"><comparison>(measure_id1 == measure_id2)</comparison><percentage>2.5</percentage></vioGenQuery>
-            <vioGenQuery id="e8"><comparison>(measure_id1 != measure_id2)</comparison><percentage>2.5</percentage></vioGenQuery>
-            <vioGenQuery id="e8"><comparison>(measure_name1 == measure_name2)</comparison><percentage>2.5</percentage></vioGenQuery>
+            <vioGenQuery id="e1"><comparison>(address1 != address2)</comparison><percentage>20</percentage></vioGenQuery>
+            <vioGenQuery id="e2"><comparison>(facility_name1 != facility_name2)</comparison><percentage>20</percentage></vioGenQuery>
+            <vioGenQuery id="e3"><comparison>(telephone_number1 != telephone_number2)</comparison><percentage>20</percentage></vioGenQuery>
+            <vioGenQuery id="e4"><comparison>(county_parish1 != county_parish2)</comparison><percentage>20</percentage></vioGenQuery>
+            <vioGenQuery id="e5"><comparison>(state1 != state2)</comparison><percentage>20</percentage></vioGenQuery>
+            <vioGenQuery id="e6"><comparison>(state1 != state2)</comparison><percentage>20</percentage></vioGenQuery>
+            <vioGenQuery id="e7"><comparison>(measure_name1 != measure_name2)</comparison><percentage>20</percentage></vioGenQuery>
+            <vioGenQuery id="e8"><comparison>(measure_id1 != measure_id2)</comparison><percentage>20</percentage></vioGenQuery>
             </vioGenQueries>
         </errorPercentages>
 
