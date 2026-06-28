@@ -97,3 +97,5 @@ if __name__ == "__main__":
     else:
         for path in fetch_tables(args):
             print(f"fetched {path}  (move into datasets/ when ready)")
+
+# TODO: it shouldnt load into datasets_temp. it should just fail if the table is already in datasets and instead load into datasets. this and the readme need to be adjusted
