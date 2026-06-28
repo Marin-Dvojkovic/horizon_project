@@ -31,6 +31,7 @@ class CSVFDLoader(FDLoader):
         set_of_fds: SetOfFDs = SetOfFDs()
 
         for row in df.iter_rows():
+            # TODO: drop the ";"-between-every-char workaround for corrupted fds.csv — unnecessary, ugly
             # composite LHS is ";"-separated; lowercase to match load_table's columns
             lhs: tuple[str] = tuple(
                 attr.strip().lower() for attr in str(row[0]).split(";")
@@ -130,7 +131,9 @@ def _scan_csv(source: str | Path) -> pl.LazyFrame:
 
 
 def _scan_parquet(source: str | Path) -> pl.LazyFrame:
-    return pl.scan_parquet(source)
+    # cast every column to Utf8 to match _scan_csv: Horizon treats all cells as
+    # strings, and parquet's native types would otherwise write e.g. "5" -> "5.0"
+    return pl.scan_parquet(source).cast(pl.Utf8)
 
 
 _SCANNERS = {
@@ -155,12 +158,9 @@ def load_table(source: str | Path, columns: list[str] | None = None) -> pl.DataF
         raise ValueError(f"No loader registered for extension '{ext}'")
     lf: pl.LazyFrame = scanner(source)
     # Remove data types in brackets
-    lf = lf.rename(
-        {
-            c: re.sub(r"\(.*?\)", "", c.strip().lower())
-            for c in lf.collect_schema().names()
-        }
-    )
+    # Lowercase column names to match the casing convention in the FD loaders.
+    lf = lf.rename({c: c.strip().lower() for c in lf.collect_schema().names()})
+
     if columns is not None:
         wanted: list[str] = [c.strip().lower() for c in columns]
         missing: list[str] = [c for c in wanted if c not in lf.collect_schema().names()]
