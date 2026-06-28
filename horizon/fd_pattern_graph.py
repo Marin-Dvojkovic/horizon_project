@@ -8,7 +8,6 @@ Each unique (column, value) pair becomes a node. This means:
 """
 
 import time
-from collections import Counter
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -64,6 +63,16 @@ class FDPatternGraph:
         logger.info("Calculating edge qualities...")
         self.calculate_edge_qualities()
 
+        # quality is now final; the repair only ever reads `quality` (see
+        # choose_best_next_edge / get_edge_quality). Drop the per-edge scratch
+        # attributes (support, back_edge, order, sum_support, n_reachable), keeping
+        # only quality, so they aren't held on every edge for the whole repair.
+        # clear() + reassign actually shrinks the dict; pop() alone would not.
+        for _, _, edge_data in self.graph.edges(data=True):
+            quality: float = edge_data["quality"]
+            edge_data.clear()
+            edge_data["quality"] = quality
+
         if enable_plotting:
             logger.debug("Saving FD pattern graph visualization")
             # Only plot subgraph with 3 values for each attribute
@@ -72,8 +81,8 @@ class FDPatternGraph:
                 for col_name in fd_columns
                 for node in [
                     n
-                    for n, data in self.graph.nodes(data=True)
-                    if data["column"] == col_name
+                    for n in self.graph.nodes()
+                    if self._parse_node_id(n)[0] == col_name
                 ][:3]
             ]
             sub_g: nx.Graph = self.graph.subgraph(sub_g_nodes)
@@ -133,46 +142,55 @@ class FDPatternGraph:
         logger.debug("Starting graph construction")
         G: nx.DiGraph = nx.DiGraph()
 
-        # Add nodes for each unique value
+        # Add nodes for each unique value. No attributes: column and value are
+        # recoverable from the node id via _parse_node_id, so storing them again
+        # is dead weight on every node (the graph is held live through the repair).
         G.add_nodes_from(
-            (self._cell_node_id(col_name, value), {"column": col_name, "value": value})
+            self._cell_node_id(col_name, value)
             for col_name in data.columns
             for value in self._get_unique_values(data, col_name)
         )
 
-        # Create edge list for each FD and each row (including duplicates)
+        # Edge support = #rows matching an FD pattern (lhs_val -> rhs_val). Compute
+        # it with a per-FD group-by instead of materializing one tuple per row:
+        # the old approach built ~n_rows x n_fds node-id strings up front (the
+        # pipeline's largest allocation), while the group-by yields only the
+        # distinct value pairs — bounded by the data's redundancy, not its size.
+        # The group's row count is exactly what Counter computed.
+        #
+        # maintain_order=True is load-bearing, not cosmetic: choose_best_next_edge
+        # breaks quality ties by first-inserted edge, and the old Counter inserted
+        # edges in first-occurrence (row) order. Hash order would change tie-breaks
+        # and thus the repairs. iter over named rows so values bind by column name
+        # regardless of the group-key column order.
         number_of_tuples: int = len(data)
-        edges_list: list[tuple] = [
-            (
-                self._cell_node_id(str(fd.lhs), data[row_idx, fd.lhs]),
-                self._cell_node_id(fd.rhs, data[row_idx, fd.rhs]),
-                fd.cyclic,
-                fd.order,
-            )
-            for fd in set_of_fds
-            if not isinstance(fd.lhs, tuple)  # TODO: Support multiple attributes on LHS
-            for row_idx in range(number_of_tuples)
-        ]
-
-        # Add unique edges to graph and calculate support with counter
-        # Add back-edge and order properties
-        G.add_edges_from(
-            [
-                (
-                    edge_tuple[0],
-                    edge_tuple[1],
-                    {
-                        "support": support / number_of_tuples,
-                        "quality": support / number_of_tuples,
-                        "back_edge": edge_tuple[2],
-                        "order": edge_tuple[3],
-                        "sum_support": 0,
-                        "n_reachable": 0,
-                    },
+        edges: list[tuple] = []
+        for fd in set_of_fds:
+            # TODO: Support multiple attributes on LHS
+            if isinstance(fd.lhs, tuple):
+                continue
+            pair_counts: pl.DataFrame = data.group_by(
+                fd.lhs, fd.rhs, maintain_order=True
+            ).len()
+            for row in pair_counts.iter_rows(named=True):
+                support: int = row["len"]
+                edges.append(
+                    (
+                        self._cell_node_id(fd.lhs, row[fd.lhs]),
+                        self._cell_node_id(fd.rhs, row[fd.rhs]),
+                        {
+                            "support": support / number_of_tuples,
+                            "quality": support / number_of_tuples,
+                            "back_edge": fd.cyclic,
+                            "order": fd.order,
+                            "sum_support": 0,
+                            "n_reachable": 0,
+                        },
+                    )
                 )
-                for edge_tuple, support in Counter(edges_list).items()
-            ],
-        )
+
+        # Add unique edges to graph with their support/back-edge/order properties
+        G.add_edges_from(edges)
 
         logger.debug(
             f"Graph construction completed: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges"
@@ -244,7 +262,8 @@ class FDPatternGraph:
 
     def get_node_info(self, node_id: str) -> dict:
         """Get all stored information about a node."""
-        return self.graph.nodes[node_id]
+        col_name, value = self._parse_node_id(node_id)
+        return {"column": col_name, "value": value}
 
     def choose_best_next_edge(self, lhs: str, lval: str, rhs: str) -> tuple[str, str]:
         """Choose best next edge given a LHS attribute and value, returns RHS attribute and value with the highest quality."""
