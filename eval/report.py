@@ -2,7 +2,7 @@ from pathlib import Path
 
 import polars as pl
 
-from eval.dataset_eval import characterize_dataset
+from eval.dataset_eval import avg_frequency, characterize_dataset
 from eval.fd_eval import (
     characterize_fds,
     fd_lhs_redundancy,
@@ -30,15 +30,19 @@ def characterize_lazy(source: str | Path, fds: list[FunctionalDependency]) -> di
     """
     out = {**characterize_fds(fds)}
     lhs_red: dict[tuple, float] = {}
+    red_per_col: dict[str, float] = {}
     g3: dict[FunctionalDependency, float] = {}
     clusters: dict[FunctionalDependency, pl.DataFrame] = {}
     for i, fd in enumerate(fds, 1):
         print(f"[{i}/{len(fds)}] {fd}", flush=True)
-        df_fd = load_table(source, columns=list(fd.lhs) + [fd.rhs])
+        df_fd = load_table(source, columns=fd.get_attributes())
         mb = df_fd.estimated_size() / 1024 / 1024
         print(f"    loaded {df_fd.height:,} rows, {mb:.1f} MB", flush=True)
-        if fd.lhs not in lhs_red:
+        if fd.lhs_attributes not in lhs_red:
             lhs_red.update(fd_lhs_redundancy(df_fd, [fd]))
+        for c in df_fd.columns:
+            if c not in red_per_col:
+                red_per_col[c] = avg_frequency(df_fd[c])
         g3[fd] = g3_error(df_fd, fd)
         clusters[fd] = violation_clusters(df_fd, fd)
         print(
@@ -46,6 +50,7 @@ def characterize_lazy(source: str | Path, fds: list[FunctionalDependency]) -> di
             flush=True,
         )
     out["fd_lhs_redundancy"] = lhs_red
+    out["redundancy_per_column"] = red_per_col
     out["g3_error"] = g3
     out["violation_clusters"] = clusters
     return out

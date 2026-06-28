@@ -17,11 +17,13 @@ def fd_lhs_redundancy(
     """
     out: dict[tuple, float] = {}
     for fd in fds:
-        if fd.lhs in out:
+        if fd.lhs_attributes in out:
             continue
-        sub = df.select(list(fd.lhs)).drop_nulls()
+        sub = df.select(list(fd.lhs_attributes)).drop_nulls()
         n = sub.height
-        out[fd.lhs] = 0.0 if n <= 1 else math.log(n / sub.n_unique()) / math.log(n)
+        out[fd.lhs_attributes] = (
+            0.0 if n <= 1 else math.log(n / sub.n_unique()) / math.log(n)
+        )
     return out
 
 
@@ -31,7 +33,7 @@ def attribute_overlap(fds: list[FunctionalDependency]) -> float:
 
     all_attributes = []
     for fd in fds:
-        all_attributes.extend([str(attr).lower() for attr in fd.lhs])
+        all_attributes.extend([str(attr).lower() for attr in fd.lhs_attributes])
         all_attributes.append(str(fd.rhs).lower())
 
     total_count = len(all_attributes)
@@ -55,8 +57,8 @@ def fd_interaction_cases(fds: list[FunctionalDependency]) -> set[str]:
     """
     cases: set[str] = set()
     for fd_i, fd_j in combinations(fds, 2):
-        x_i, y_i = frozenset(fd_i.lhs), fd_i.rhs
-        x_j, y_j = frozenset(fd_j.lhs), fd_j.rhs
+        x_i, y_i = frozenset(fd_i.lhs_attributes), fd_i.rhs
+        x_j, y_j = frozenset(fd_j.lhs_attributes), fd_j.rhs
         if x_i & x_j and y_i != y_j:
             cases.add("IC1")
         if y_i == y_j:
@@ -83,9 +85,9 @@ def g3_error(df: pl.DataFrame, fd: FunctionalDependency) -> float:
         return 0.0
     # sentinel names so the count columns can't collide with an attribute named "c"
     mode_counts = (
-        sub.group_by(list(fd.lhs) + [fd.rhs])
+        sub.group_by(list(fd.lhs_attributes) + [fd.rhs])
         .agg(pl.len().alias("__g3_count"))
-        .group_by(list(fd.lhs))
+        .group_by(list(fd.lhs_attributes))
         .agg(pl.col("__g3_count").max().alias("__g3_max"))
     )
     return 1.0 - mode_counts["__g3_max"].sum() / n
@@ -102,17 +104,19 @@ def violation_clusters(df: pl.DataFrame, fd: FunctionalDependency) -> pl.DataFra
     `attr(fd)` — function does not re-project.
     """
     sub = df.drop_nulls()
-    counts = sub.group_by(list(fd.lhs) + [fd.rhs]).agg(pl.len().alias("count"))
+    counts = sub.group_by(list(fd.lhs_attributes) + [fd.rhs]).agg(
+        pl.len().alias("count")
+    )
     violating_keys = (
-        counts.group_by(list(fd.lhs))
+        counts.group_by(list(fd.lhs_attributes))
         .agg(pl.col(fd.rhs).n_unique().alias("_n_rhs"))
         .filter(pl.col("_n_rhs") > 1)
-        .select(list(fd.lhs))
+        .select(list(fd.lhs_attributes))
     )
-    out = counts.join(violating_keys, on=list(fd.lhs), how="inner")
+    out = counts.join(violating_keys, on=list(fd.lhs_attributes), how="inner")
     return out.sort(
-        list(fd.lhs) + ["count"],
-        descending=[False] * len(fd.lhs) + [True],
+        list(fd.lhs_attributes) + ["count"],
+        descending=[False] * len(fd.lhs_attributes) + [True],
     )
 
 
