@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 import sys
 import time
@@ -61,6 +62,12 @@ parser.add_argument(
     action="store_true",
     help="Enable plotting of the graphs.",
 )
+parser.add_argument(
+    "--collect_pattern_expressions",
+    "-ex",
+    action="store_true",
+    help="Enable collecting pattern expressions for lineage.",
+)
 
 
 def repair_tuple(
@@ -110,8 +117,8 @@ def repair_dirty_data(
     dirty_data_path: Path,
     ordered_fds: list[list[FunctionalDependency]],
     fd_pattern_graph: FDPatternGraph,
-    collect_pattern_expressions: bool = True,
     n_rows: int | None = None,
+    collect_pattern_expressions: bool = True,
 ) -> tuple[pl.DataFrame, list[PatternExpression], float]:
     """Repairs data under the given path, based on the given order and FD Pattern graph.
     If n_rows is given, only repairs the first n_rows tuples."""
@@ -199,6 +206,7 @@ def main(
     dirty_data_file: str,
     n_rows: int | None,
     enable_plotting: bool,
+    collect_pattern_expressions: bool,
 ) -> None:
     dataset_name: str = dataset_dir.name
 
@@ -228,7 +236,11 @@ def main(
 
     # Compute repairs for dirty data
     cleaned_data, pattern_expressions, repair_time = repair_dirty_data(
-        dirty_data_path, ordered_fds, fd_pattern_graph, n_rows
+        dirty_data_path,
+        ordered_fds,
+        fd_pattern_graph,
+        n_rows,
+        collect_pattern_expressions,
     )
 
     # Create output directory
@@ -249,15 +261,15 @@ def main(
     logger.info(f"Final pattern expressions saved to {exp_output_path}")
 
     # Save repair time statistics
-    stat_output_path: Path = output_dir / f"{dataset_name}_statistics.txt"
+    stat_output_path: Path = output_dir / f"{dataset_name}_statistics.json"
+    repair_statistics = {
+        "order_fds_time": fd_ordering_time,
+        "build_fd_pattern_graph_time": fd_pattern_graph._build_time,
+        "repair_time": repair_time,
+        "total_time": fd_ordering_time + fd_pattern_graph._build_time + repair_time,
+    }
     stat_file = open(stat_output_path, "w", encoding="utf-8")
-    stat_file.write(f"Order FDs time: {fd_ordering_time:.3f}s\n")
-    stat_file.write(
-        f"Build FD Pattern graph time: {fd_pattern_graph._build_time:.3f}s\n"
-    )
-    stat_file.write(f"Repair time: {repair_time:.3f}s\n")
-    total_time: float = fd_ordering_time + fd_pattern_graph._build_time + repair_time
-    stat_file.write(f"Total time: {total_time:.3f}s\n")
+    json.dump(repair_statistics, stat_file)
     stat_file.close()
     logger.info(f"Repair time statistics saved to {stat_output_path}")
 
@@ -278,6 +290,7 @@ if __name__ == "__main__":
             args.dirty_data_file,
             args.n_rows,
             args.enable_plotting,
+            args.collect_pattern_expressions,
         )
         logger.info("Pipeline execution completed successfully")
     except Exception as e:

@@ -21,7 +21,7 @@ This installs all dependencies (defined in [`pyproject.toml`](pyproject.toml).) 
 In the project directory, run:
 
 ```bash
-uv run horizon/horizon.py --dataset_dir path/to/dataset/ [--dirty_data_file dirty.csv] [--output_dir output] [--n_rows n] [--log_level INFO] [--enable_plotting]
+uv run horizon/horizon.py --dataset_dir path/to/dataset/ [--dirty_data_file dirty.csv] [--output_dir output] [--n_rows n] [--log_level INFO] [--enable_plotting] [--collect_pattern_expressions]
 ```
 
 Explanation of arguments:
@@ -32,6 +32,7 @@ Explanation of arguments:
 - _--n_rows_ or _-n_: Number of rows to repair (still uses full dataset to build graphs). (default: all rows)
 - _--log_level_ or _-l_: Log level. Options: DEBUG, INFO, WARNING, ERROR. (default: INFO)
 - _--enable_plotting_ or _-p_: Enable plotting of the graphs.
+- _--collect_pattern_expressions_ or _-ex_: Enable collection of pattern expressions in a `.txt` file for lineage.
 
 Run the tests with `uv run pytest`.
 
