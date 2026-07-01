@@ -12,6 +12,7 @@ def test_characterize_merges_both_sides():
         "n_rows",
         "n_cols",
         "avg_redundancy",
+        "redundancy_per_column",
         "avg_value_length",
         "low_redundancy_col_count",
         "attribute_overlap",

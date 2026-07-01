@@ -152,6 +152,7 @@ def test_characterize_dataset_keys_and_values():
         "n_rows": 4,
         "n_cols": 2,
         "avg_redundancy": pytest.approx(0.25),
+        "redundancy_per_column": {"a": 2.0, "b": 1.0},
         "avg_value_length": pytest.approx(1.5),
         "low_redundancy_col_count": 2,
     }
@@ -163,6 +164,7 @@ def test_characterize_dataset_empty():
         "n_rows": 0,
         "n_cols": 0,
         "avg_redundancy": 0.0,
+        "redundancy_per_column": {},
         "avg_value_length": 0.0,
         "low_redundancy_col_count": 0,
     }
