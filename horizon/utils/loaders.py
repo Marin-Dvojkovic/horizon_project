@@ -20,7 +20,7 @@ class CSVFDLoader(FDLoader):
     def __init__(self) -> None:
         logger.debug("Initialized CSVFDLoader")
 
-    def load(self, source: str | Path) -> SetOfFDs:
+    def load(self, source: Path) -> SetOfFDs:
         logger.debug(f"Loading FDs from CSV: {source}")
         df: pl.DataFrame = pl.read_csv(source)
         if len(df.columns) < 2:
@@ -57,19 +57,28 @@ class TXTFDLoader(FDLoader):
     def load_column_names(self, columns_csv_path: Path) -> list[str]:
         # Read only the header (no rows needed)
         try:
-            df: pl.DataFrame = pl.read_csv(str(columns_csv_path), n_rows=0)
+            df: pl.DataFrame = pl.read_csv(
+                str(columns_csv_path), n_rows=0, infer_schema=False
+            )
             # Remove data types in brackets
             return [re.sub(r"\(.*?\)", "", column_name) for column_name in df.columns]
         except Exception:
             # Fallback: try reading full file then columns
             try:
-                df: pl.DataFrame = pl.read_csv(str(columns_csv_path))
+                df: pl.DataFrame = pl.read_csv(
+                    str(columns_csv_path), infer_schema=False
+                )
                 # Remove data types in brackets
                 return [
                     re.sub(r"\(.*?\)", "", column_name) for column_name in df.columns
                 ]
-            except Exception:
-                return []
+            except Exception as e:
+                logger.error(
+                    f"Could not read {columns_csv_path}. Failed with error: {e}"
+                )
+                raise RuntimeError(
+                    f"Could not read {columns_csv_path}. Failed with error: {e}"
+                )
 
     def parse_line(self, line) -> tuple[list[str], str] | None:
         parts = line.split(self._separator)
@@ -81,7 +90,7 @@ class TXTFDLoader(FDLoader):
         rhs_index: str = parts[1].strip()
         return lhs_indices, rhs_index
 
-    def load(self, source: str | Path) -> SetOfFDs:
+    def load(self, source: Path) -> SetOfFDs:
         logger.debug(f"Loading FDs from TXT: {source}")
 
         set_of_fds: SetOfFDs = SetOfFDs()
@@ -112,28 +121,55 @@ _EXTENSION_LOADERS: dict[str, type[FDLoader]] = {
 }
 
 
-def get_fds(source: str | Path, columns_csv_path: Path) -> SetOfFDs:
+def get_fds(source: Path, columns_csv_path: Path) -> SetOfFDs:
+    """Extracts FDs as SetOfFDs from the given source. Source can be fds.csv or fds.txt."""
+    if not source.exists():
+        logger.error(f"File {str(source)} does not exist")
+        raise ValueError(f"File {str(source)} does not exist")
+
     logger.debug(f"Getting FDs from source: {source}")
     ext: str = Path(source).suffix.lower()
     loader: type[FDLoader] | None = _EXTENSION_LOADERS.get(ext)
     if loader is None:
         logger.error(f"No loader registered for extension '{ext}'")
         raise ValueError(f"No loader registered for extension '{ext}'")
+
     if loader == TXTFDLoader:
         return TXTFDLoader(columns_csv_path).load(source)
     return loader().load(source)
 
 
-def _scan_csv(source: str | Path) -> pl.LazyFrame:
+def load_fds(dataset_dir: Path, data_csv_path: Path) -> SetOfFDs:
+    """Finds an FD file under the given dataset directory.
+    Prefers fds.csv, otherwise extracts FDs from fds.txt. Returns SetOfFDs."""
+    # Check for fds.csv or fds.txt (prefer .csv)
+    fd_files: list[Path] = sorted(
+        list(dataset_dir.glob("fds.*")),
+        key=lambda path: path.suffix.lower() != ".csv",
+    )
+    if len(fd_files) < 1:
+        logger.error(f"No FD file found under {str(dataset_dir)}")
+        raise ValueError(f"No FD file found under {str(dataset_dir)}")
+
+    fds_path: Path = fd_files[0]
+    logger.debug(f"Loading FDs from: {fds_path}")
+
+    # Use data loader to read input FDs from file
+    fds: SetOfFDs = get_fds(fds_path, data_csv_path)
+    logger.info(f"Loaded {len(fds)} functional dependencies")
+    return fds
+
+
+def _scan_csv(source: Path, n_rows: int | None) -> pl.LazyFrame:
     # read every column as Utf8: Horizon treats all cells as strings, and
     # dtype inference would rewrite e.g. "5" -> "5.0" on output
-    return pl.scan_csv(source, infer_schema_length=0)
+    return pl.scan_csv(source, infer_schema_length=0, n_rows=n_rows)
 
 
-def _scan_parquet(source: str | Path) -> pl.LazyFrame:
+def _scan_parquet(source: Path, n_rows: int | None) -> pl.LazyFrame:
     # cast every column to Utf8 to match _scan_csv: Horizon treats all cells as
     # strings, and parquet's native types would otherwise write e.g. "5" -> "5.0"
-    return pl.scan_parquet(source).cast(pl.Utf8)
+    return pl.scan_parquet(source, n_rows=n_rows).cast(pl.Utf8)
 
 
 _SCANNERS = {
@@ -142,7 +178,9 @@ _SCANNERS = {
 }
 
 
-def load_table(source: str | Path, columns: list[str] | None = None) -> pl.DataFrame:
+def load_table(
+    source: Path, columns: list[str] | None = None, n_rows: int | None = None
+) -> pl.DataFrame:
     """Read a CSV or Parquet table with column names lowercased.
 
     Dispatches to a per-extension scanner. Matches the lowercasing in
@@ -151,12 +189,17 @@ def load_table(source: str | Path, columns: list[str] | None = None) -> pl.DataF
     down into the scan so unselected columns are never read. Missing names
     raise ValueError.
     """
+    if not source.exists():
+        logger.error(f"File {str(source)} does not exist")
+        raise ValueError(f"File {str(source)} does not exist")
+
     ext: str = Path(source).suffix.lower()
     scanner = _SCANNERS.get(ext)
     if scanner is None:
         logger.error(f"No loader registered for extension '{ext}'")
         raise ValueError(f"No loader registered for extension '{ext}'")
-    lf: pl.LazyFrame = scanner(source)
+
+    lf: pl.LazyFrame = scanner(source, n_rows)
     # Remove data types in brackets
     # Lowercase column names to match the casing convention in the FD loaders.
     lf = lf.rename({c: c.strip().lower() for c in lf.collect_schema().names()})

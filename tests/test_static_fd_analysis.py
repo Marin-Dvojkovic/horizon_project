@@ -42,7 +42,7 @@ def static_fd_analysis_test(dataset_name: str) -> None:
     # Get traversal order
     ordered_fds: list[list[FunctionalDependency]] = get_ordered_fds(
         set_of_fds, dataset_name, output_dir
-    )
+    )[0]
 
     assert set_of_fds.bound_attributes == correct_bound_attributes[dataset_name]
     assert ordered_fds == correct_ordered_fds[dataset_name]

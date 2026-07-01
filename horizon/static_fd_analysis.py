@@ -397,7 +397,7 @@ def get_ordered_fds(
     dataset_name: str,
     output_dir: Path = Path("output"),
     enable_plotting: bool = True,
-) -> list[list[FunctionalDependency]]:
+) -> tuple[list[list[FunctionalDependency]], float]:
     logger.info("Computing ordered FDs for pipeline execution")
 
     start: float = time.time()
@@ -428,23 +428,24 @@ def get_ordered_fds(
 
     logger.debug([f"{str(fd)}: {fd.cyclic}" for fd in set_of_fds])
 
+    end: float = time.time()
+    elapsed_time: float = end - start
+    logger.info(f"Completed ordering FDs in {elapsed_time:.2f}s")
+
     # If plotting is enabled, save graph visualizations under output directory
     if enable_plotting:
         fd_graph.plot_graphs(dataset_name, output_dir)
 
-    # save structured graph data for the UI to render itself (independent of the
-    # PNG export and of FD ordering — best effort, never fatal)
-    try:
-        output_dir.mkdir(parents=True, exist_ok=True)
-        graph_json = output_dir / f"{dataset_name}_graph.json"
-        graph_json.write_text(
-            json.dumps(fd_graph.graph_data(), indent=2), encoding="utf-8"
-        )
-        logger.debug(f"Saved graph data to {graph_json}")
-    except Exception as e:
-        logger.warning(f"Could not export graph data: {e}")
+        # save structured graph data for the UI to render itself (independent of the
+        # PNG export and of FD ordering — best effort, never fatal)
+        try:
+            output_dir.mkdir(parents=True, exist_ok=True)
+            graph_json = output_dir / f"{dataset_name}_graph.json"
+            graph_json.write_text(
+                json.dumps(fd_graph.graph_data(), indent=2), encoding="utf-8"
+            )
+            logger.debug(f"Saved graph data to {graph_json}")
+        except Exception as e:
+            logger.warning(f"Could not export graph data: {e}")
 
-    end: float = time.time()
-    logger.info(f"Completed ordering FDs in {(end - start):.2f}s")
-
-    return ordered_fds
+    return ordered_fds, elapsed_time

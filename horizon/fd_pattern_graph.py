@@ -13,14 +13,13 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import networkx as nx
 import polars as pl
-import utils.loaders
 from fds.set_of_fds import SetOfFDs
+from utils.loaders import load_table
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 output_dir: Path = Path("output")
-enable_plotting: bool = False
 
 
 class FDPatternGraph:
@@ -34,7 +33,9 @@ class FDPatternGraph:
     # Class variable
     graph: nx.DiGraph
 
-    def __init__(self, data_path: str, set_of_fds: SetOfFDs):
+    def __init__(
+        self, data_path: Path, set_of_fds: SetOfFDs, enable_plotting: bool = False
+    ):
         """
         Initialize the FDPatternGraph.
 
@@ -43,14 +44,14 @@ class FDPatternGraph:
             set_of_fds: Parsed set of functional dependencies
         """
         logger.info(
-            f"Initializing FDPatternGraph with data: {data_path}, FDs: {str(set_of_fds)}"
+            f"Initializing FDPatternGraph with data: {str(data_path)}, FDs: {str(set_of_fds)}"
         )
 
         # Load data
-        logger.debug(f"Loading data from {data_path}")
+        logger.debug(f"Loading data from {str(data_path)}")
 
         fd_columns: set[str] = set_of_fds.unique_attributes
-        data: pl.DataFrame = utils.loaders.load_table(data_path, list(fd_columns))
+        data: pl.DataFrame = load_table(data_path, list(fd_columns))
         logger.info(f"Loaded data: {len(data)} rows, {len(fd_columns)} columns")
 
         start: float = time.time()
@@ -73,6 +74,12 @@ class FDPatternGraph:
             edge_data.clear()
             edge_data["quality"] = quality
 
+        end: float = time.time()
+        self._build_time: float = end - start
+        logger.info(
+            f"FDPatternGraph initialization completed in {self._build_time:.2f}s. Graph has {self.graph.number_of_nodes()} nodes and {self.graph.number_of_edges()} edges"
+        )
+
         if enable_plotting:
             logger.debug("Saving FD pattern graph visualization")
             # Only plot subgraph with 3 values for each attribute
@@ -94,11 +101,6 @@ class FDPatternGraph:
             )
             plt.savefig(str(output_dir / "fd_pattern_graph.png"))
             plt.clf()
-
-        end: float = time.time()
-        logger.info(
-            f"FDPatternGraph initialization completed in {(end - start):.2f}s. Graph has {self.graph.number_of_nodes()} nodes and {self.graph.number_of_edges()} edges"
-        )
 
     def _cell_node_id(self, col_name: str, value) -> str:
         """
