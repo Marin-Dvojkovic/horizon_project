@@ -243,21 +243,22 @@ class FDPatternGraph:
             )
 
         for from_node, to_node, edge_data in skipped_edges:
-            supp_sum = self.graph[from_node][to_node]["support"]
+            
             visited_edges = set()
-            visited_edges.add((from_node,to_node))
             stack = [to_node]
+            quality_sum = 0.0
+            
             while stack:
-                logger.debug(f"current stack: {stack}")
                 current_node = stack.pop()
                 for neighbor in self.graph.successors(current_node):
                     if (current_node,neighbor) not in visited_edges:
                         stack.append(neighbor)
-                        supp_sum += self.graph[current_node][neighbor]["support"]
+                        quality_sum += self.graph[current_node][neighbor]["quality"]
                         visited_edges.add((current_node,neighbor))
 
-            quality = supp_sum / len(visited_edges)
+            quality = quality_sum / len(visited_edges)
             self.graph[from_node][to_node]["quality"] = quality
+            support = self.graph[from_node][to_node]["support"]
         return
 
     def get_edge_quality(self, from_node: str, to_node: str) -> float:
