@@ -11,8 +11,19 @@ from horizon.horizon import repair_dirty_data
 from horizon.static_fd_analysis import get_ordered_fds
 from horizon.utils.loaders import load_table
 
-test_data_dir: Path = Path(__file__).parent.resolve() / "test_data"
-output_dir: Path = Path(__file__).parent.resolve() / Path("output")
+TEST_DATA_DIR: Path = Path(__file__).parent.resolve() / "test_data"
+OUTPUT_DIR: Path = Path(__file__).parent.resolve() / Path("output")
+
+set_of_fds: dict[str, SetOfFDs] = {
+    "paper_example": SetOfFDs(
+        [
+            FunctionalDependency("provider_area_id", "service_area"),
+            FunctionalDependency("provider_address", "provider_area_id"),
+            FunctionalDependency("provider_id", "provider_address"),
+            FunctionalDependency("service_area", "provider_area_id"),
+        ]
+    )
+}
 
 
 @pytest.fixture
@@ -21,30 +32,23 @@ def all_test_datasets() -> list[str]:
 
 
 def repair_dirty_data_test(dataset_name: str) -> None:
-    dirty_data_path: Path = test_data_dir / f"{dataset_name}_dirty.csv"
-    clean_data_path: Path = test_data_dir / f"{dataset_name}_clean.csv"
+    dirty_data_path: Path = TEST_DATA_DIR / f"{dataset_name}_dirty.csv"
+    clean_data_path: Path = TEST_DATA_DIR / f"{dataset_name}_clean.csv"
 
-    set_of_fds: SetOfFDs = SetOfFDs(
-        [
-            FunctionalDependency("provider_id", "provider_address"),
-            FunctionalDependency("provider_address", "provider_area_id"),
-            FunctionalDependency("provider_area_id", "service_area"),
-            FunctionalDependency("service_area", "provider_area_id"),
-        ]
-    )
+    fds: SetOfFDs = set_of_fds[dataset_name]
 
     # Get traversal order
     ordered_fds: list[list[FunctionalDependency]] = get_ordered_fds(
-        set_of_fds, dataset_name, output_dir
+        fds, dataset_name, OUTPUT_DIR
     )[0]
 
     # Build FD pattern graph
-    fd_pattern_graph: FDPatternGraph = FDPatternGraph(dirty_data_path, set_of_fds)
+    fd_pattern_graph: FDPatternGraph = FDPatternGraph(dirty_data_path, fds)
 
     # Compute repairs for dirty data
-    cleaned_data: pl.DataFrame = repair_dirty_data(
-        dirty_data_path, ordered_fds, fd_pattern_graph
-    )[0]
+    cleaned_data_path: Path = OUTPUT_DIR / f"{dataset_name}_cleaned_data.csv"
+    repair_dirty_data(dirty_data_path, cleaned_data_path, ordered_fds, fd_pattern_graph)
+    cleaned_data: pl.DataFrame = load_table(cleaned_data_path)
 
     # Assert correctness of repairs
     clean_data: pl.DataFrame = load_table(clean_data_path)
@@ -53,7 +57,7 @@ def repair_dirty_data_test(dataset_name: str) -> None:
 
 
 def test_repair_datasets(all_test_datasets) -> None:
-    output_dir.mkdir(exist_ok=True)
+    OUTPUT_DIR.mkdir(exist_ok=True)
 
     for dataset in all_test_datasets:
         repair_dirty_data_test(dataset)
