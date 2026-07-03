@@ -61,6 +61,12 @@ class SetOfFDs:
     def __len__(self) -> int:
         return len(self._set_of_fds)
 
+    def get_ordered_set_of_fds(self) -> list[FunctionalDependency]:
+        return sorted(
+            self._set_of_fds,
+            key=lambda fd: fd.order if fd.order is not None else len(self._set_of_fds),
+        )
+
     def add_fd(self, fd: FunctionalDependency) -> None:
         self._set_of_fds.append(fd)
         self._unique_attributes.update(
