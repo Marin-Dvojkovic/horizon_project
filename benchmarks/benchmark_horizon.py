@@ -121,19 +121,23 @@ def run_horizon(
     evaluated_runs: list[dict] = []
     dataset_name: str = dataset_path.name
 
-    # Get all dirty data files
+    # Get all dirty data files (default: dirty.csv)
     dirty_data_files: list[str] = ["dirty.csv"]
-    if not (dataset_path / "dirty.csv").exists():
-        injected_path: Path = dataset_path / "injected"
-        if not injected_path.exists():
-            print(
-                f"\nNo dirty data file found. Skipping benchmarks for dataset {dataset_path.name}."
-            )
-            return []
+    # Check for injected/ over dirty.csv
+    injected_path: Path = dataset_path / "injected"
+    if injected_path.exists():
         dirty_data_files = [
             str(Path("injected") / injected_data.name)
             for injected_data in injected_path.glob("*_r*.csv")
         ]
+    elif (dataset_path / "clean.csv").exists():
+        # If injected/ does not exist, take clean.csv
+        dirty_data_files = ["clean.csv"]
+    else:
+        print(
+            f"\nNo dirty data file found under {str(dataset_path)}. Skipping benchmarks for dataset {dataset_path.name}."
+        )
+        return []
 
     # Get number of FDs
     fd_files: list[Path] = sorted(
@@ -142,7 +146,10 @@ def run_horizon(
     )
     n_fds: int = 0
     if len(fd_files) < 1:
-        print(f"No FD file found under {str(dataset_path)}")
+        print(
+            f"\nNo FD file found under {str(dataset_path)}. Skipping benchmarks for dataset {dataset_path.name}."
+        )
+        return []
     else:
         line_count: int = sum(1 for line in open(fd_files[0], "r").readlines())
         n_fds = line_count - 1 if fd_files[0].suffix == ".csv" else line_count
@@ -151,14 +158,6 @@ def run_horizon(
     for dirty_data_file in dirty_data_files:
         dirty_data_path: Path = dataset_path / Path(dirty_data_file)
         total_rows: int = sum(1 for line in open(dirty_data_path, "r").readlines()) - 1
-
-        # Create sub-directory for each dirty data file
-        dirty_data_output_dir: Path = (
-            output_path / dirty_data_path.stem
-            if dirty_data_file != "dirty.csv"
-            else output_path
-        )
-        dirty_data_output_dir.mkdir(exist_ok=True)
 
         # Get dataset properties
         error_type: str | None = None
@@ -173,6 +172,14 @@ def run_horizon(
         for n_tuples in range(
             round(total_rows / 10), total_rows + 1, round(total_rows / 10)
         ):
+            # Create sub-directory for each dirty data file and number of tuples
+            output_sub_dir: Path = (
+                output_path / dirty_data_path.stem / str(n_tuples)
+                if dirty_data_file != "dirty.csv" and dirty_data_file != "clean.csv"
+                else output_path / str(n_tuples)
+            )
+            output_sub_dir.mkdir(parents=True, exist_ok=True)
+
             # Run benchmark command
             benchmark_cmd: list[str] = [
                 sys.executable,
@@ -182,7 +189,7 @@ def run_horizon(
                 "--dirty_data_file",
                 str(dirty_data_file),
                 "--output_dir",
-                str(dirty_data_output_dir),
+                str(output_sub_dir),
                 "--log_level",
                 "WARNING",
                 "--n_rows",
@@ -222,8 +229,8 @@ def run_horizon(
             evaluation: dict = eval_run(
                 dataset_path / "clean.csv",
                 dirty_data_path,
-                dirty_data_output_dir / f"{dataset_name}_cleaned_data.csv",
-                dirty_data_output_dir / f"{dataset_name}_statistics.json",
+                output_sub_dir / f"{dataset_name}_cleaned_data.csv",
+                output_sub_dir / f"{dataset_name}_statistics.json",
                 n_tuples,
                 elapsed_time,
             )

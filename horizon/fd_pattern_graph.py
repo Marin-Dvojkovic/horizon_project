@@ -132,7 +132,7 @@ class FDPatternGraph:
 
         number_of_tuples: int = len(data)
         skipped_edges: list[tuple] = []
-        # Add edges for each FD and value combination - nodes are added automatically
+        # Add nodes and edges for each FD and value combination
         # Compute edge quality on the fly
         for fd in ordered_set_of_fds:
             # TODO: Support multiple attributes on LHS
@@ -173,6 +173,8 @@ class FDPatternGraph:
             for row in pair_counts.iter_rows(named=True):
                 from_node = self._cell_node_id(fd.lhs, row[fd.lhs])
                 to_node = self._cell_node_id(fd.rhs, row[fd.rhs])
+                G.add_nodes_from([from_node, to_node])
+
                 support: float = row["len"] / number_of_tuples
 
                 # Sum over direct neighbor's summed support to get reachable support
