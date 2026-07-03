@@ -12,7 +12,7 @@ from fds.fd_pattern import FDPattern
 from fds.pattern_expression import PatternExpression
 from fds.set_of_fds import SetOfFDs
 from static_fd_analysis import get_ordered_fds
-from utils.loaders import load_fds, load_table
+from utils.loaders import lazy_load_table, load_fds
 from utils.logging_config import get_logger, setup_logging
 
 # Setup logging
@@ -115,17 +115,16 @@ def repair_tuple(
 
 def repair_dirty_data(
     dirty_data_path: Path,
+    cleaned_data_output_path: Path,
     ordered_fds: list[list[FunctionalDependency]],
     fd_pattern_graph: FDPatternGraph,
     n_rows: int | None = None,
     collect_pattern_expressions: bool = True,
-) -> tuple[pl.DataFrame, list[PatternExpression], float]:
-    """Repairs data under the given path, based on the given order and FD Pattern graph.
-    If n_rows is given, only repairs the first n_rows tuples."""
-    # Each tuple's PatternExpression is needed only while repairing that tuple.
-    # Retaining all of them (for the lineage output) costs O(n_tuples) objects;
-    # set collect_pattern_expressions=False to free each one immediately when the
-    # lineage is not needed (e.g. runtime benchmarks).
+) -> tuple[list[PatternExpression], float]:
+    """Repairs data under the given dirty data path, based on the given order and FD Pattern graph.
+    If n_rows is given, only repairs the first n_rows tuples.
+    Set collect_pattern_expressions=False to free each tuple's PatternExpression immediately when the lineage is not needed (e.g. runtime benchmarks).
+    Saves cleaned data under given cleaned data output path."""
 
     # Compute repairs for dirty data
     pattern_expressions: list[PatternExpression] = []
@@ -133,57 +132,52 @@ def repair_dirty_data(
         fd: {} for fds in ordered_fds for fd in fds
     }
 
-    # Repair on Python lists, not the Polars frame: per-cell df[t, col] reads
-    # and especially df[t, col] = val writes rebuild whole Arrow columns
-    # (O(n) each), making the loop O(n^2). dict-of-lists makes them O(1).
-    # Only attributes appearing in an FD are read or written, so pull just those
-    # into lists; columns the loop never touches stay in the compact Arrow frame
-    # (a Python str list costs several times more per cell) and are stitched back,
-    # in their original positions, at the end.
-    # Load dirty data
+    # Load dirty data as lazy frame
     logger.info("Loading dirty data...")
-    dirty_data: pl.DataFrame = load_table(dirty_data_path, n_rows=n_rows)
+    dirty_data_lf: pl.LazyFrame = lazy_load_table(dirty_data_path, n_rows=n_rows)
+    n_tuples: int = dirty_data_lf.select(pl.len()).collect().item()
     logger.info(
-        f"Loaded dirty data with {len(dirty_data)} tuples and {len(dirty_data.columns)} columns"
+        f"Loaded dirty data with {n_tuples} tuples and {len(dirty_data_lf.collect_schema())} columns"
     )
-    n_tuples: int = len(dirty_data)
-    original_order: list[str] = dirty_data.columns
 
-    touched_cols: list[str] = []
-    seen: set[str] = set()
-    for fds in ordered_fds:
-        for fd in fds:
-            # composite-LHS FDs are skipped by the repair loop below
-            if isinstance(fd.lhs, tuple):
-                continue
-            for col in (fd.lhs, fd.rhs):
-                if col not in seen:
-                    seen.add(col)
-                    touched_cols.append(col)
-
-    columns: dict[str, list[str]] = dirty_data.select(touched_cols).to_dict(
-        as_series=False
-    )
-    # Drop the listed columns so their Arrow buffers are freed; the untouched
-    # columns stay (zero-copy) to pass through the repair unchanged.
-    dirty_data = dirty_data.drop(touched_cols)
+    # Create empty cleaned lazy frame with same schema as dirty data
+    cleaned_lf: pl.LazyFrame = dirty_data_lf.clear()
 
     logger.info("Starting tuple repair process...")
     start: float = time.time()
-    # Iterate over tuples and compute pattern expression for each
-    for t in range(n_tuples):
-        p_exp: PatternExpression = PatternExpression(t)
-        for i in range(len(ordered_fds)):
-            for fd in ordered_fds[i]:
-                # TODO: Support multiple attributes on LHS
-                if isinstance(fd.lhs, tuple):
-                    continue
-                repair_tuple(columns, t, fd, repair_table, p_exp, fd_pattern_graph)
 
-        if collect_pattern_expressions:
-            pattern_expressions.append(p_exp)
-        if (t + 1) % max(1, n_tuples // 10) == 0:
-            logger.info(f"Repaired {t + 1}/{n_tuples} tuples")
+    # Total tuple index i
+    i: int = 0
+    # Iterate over batches
+    for df in dirty_data_lf.collect_batches(maintain_order=True, engine="streaming"):
+        batch_size: int = len(df)
+        # Convert each batch into a columns dict
+        # Per-cell df[t, col] reads on a Polars data frame and especially
+        # df[t, col] = val writes rebuild whole Arrow columns (O(n) each),
+        # making the loop O(n^2). dict-of-lists makes them O(1).
+        columns: dict[str, list[str]] = df.to_dict(as_series=False)
+
+        # Iterate over tuples in batch and compute pattern expression for each
+        for t in range(batch_size):
+            p_exp: PatternExpression = PatternExpression(i)
+            for j in range(len(ordered_fds)):
+                for fd in ordered_fds[j]:
+                    # TODO: Support multiple attributes on LHS
+                    if isinstance(fd.lhs, tuple):
+                        continue
+                    repair_tuple(columns, t, fd, repair_table, p_exp, fd_pattern_graph)
+            i += 1
+
+            # Each tuple's PatternExpression is needed only while repairing that tuple
+            # Retaining all of them (for the lineage output) costs O(n_tuples) objects
+            if collect_pattern_expressions:
+                pattern_expressions.append(p_exp)
+
+            if (i) % max(1, n_tuples // 10) == 0:
+                logger.info(f"Repaired {i}/{n_tuples} tuples")
+
+        # Append cleaned batch to final cleaned lazy frame
+        cleaned_lf = pl.concat([cleaned_lf, pl.LazyFrame(columns)])
 
     end: float = time.time()
     elapsed_time: float = end - start
@@ -191,13 +185,14 @@ def repair_dirty_data(
     logger.info(f"Tuple repair process completed in {elapsed_time:.2f}s")
     logger.debug(f"Repair table:\n{repair_table}")
 
-    # Stitch the repaired columns back onto the untouched ones, restoring the
-    # original column order.
-    cleaned_data: pl.DataFrame = dirty_data.with_columns(
-        [pl.Series(name, columns[name]) for name in touched_cols]
-    ).select(original_order)
+    # Clear the FD pattern graph to save memory
+    fd_pattern_graph.clear()
 
-    return cleaned_data, pattern_expressions, elapsed_time
+    # Save cleaned data
+    cleaned_lf.sink_csv(cleaned_data_output_path)
+    logger.info(f"Cleaned data saved to {cleaned_data_output_path}")
+
+    return pattern_expressions, elapsed_time
 
 
 def main(
@@ -235,8 +230,9 @@ def main(
     )
 
     # Compute repairs for dirty data
-    cleaned_data, pattern_expressions, repair_time = repair_dirty_data(
+    pattern_expressions, repair_time = repair_dirty_data(
         dirty_data_path,
+        output_dir / f"{dataset_name}_cleaned_data.csv",
         ordered_fds,
         fd_pattern_graph,
         n_rows,
@@ -247,18 +243,6 @@ def main(
     if not output_dir.exists:
         logger.info(f"Creating output directory under {output_dir}")
     output_dir.mkdir(exist_ok=True)
-
-    # Save cleaned data
-    data_output_path: Path = output_dir / f"{dataset_name}_cleaned_data.csv"
-    cleaned_data.write_csv(data_output_path)
-    logger.info(f"Cleaned data saved to {data_output_path}")
-
-    # Save pattern expressions as lineage
-    exp_output_path: Path = output_dir / f"{dataset_name}_final_pattern_expressions.txt"
-    exp_file = open(exp_output_path, "w", encoding="utf-8")
-    exp_file.writelines("\n".join(f"{str(p_exp)}" for p_exp in pattern_expressions))
-    exp_file.close()
-    logger.info(f"Final pattern expressions saved to {exp_output_path}")
 
     # Save repair time statistics
     stat_output_path: Path = output_dir / f"{dataset_name}_statistics.json"
@@ -272,6 +256,16 @@ def main(
     json.dump(repair_statistics, stat_file)
     stat_file.close()
     logger.info(f"Repair time statistics saved to {stat_output_path}")
+
+    # Save pattern expressions as lineage
+    if collect_pattern_expressions:
+        exp_output_path: Path = (
+            output_dir / f"{dataset_name}_final_pattern_expressions.txt"
+        )
+        exp_file = open(exp_output_path, "w", encoding="utf-8")
+        exp_file.writelines("\n".join(f"{str(p_exp)}" for p_exp in pattern_expressions))
+        exp_file.close()
+        logger.info(f"Final pattern expressions saved to {exp_output_path}")
 
 
 if __name__ == "__main__":

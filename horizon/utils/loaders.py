@@ -211,3 +211,35 @@ def load_table(
             raise ValueError(f"columns not found: {missing}")
         lf = lf.select(wanted)
     return lf.collect()
+
+
+def lazy_load_table(
+    source: Path, columns: list[str] | None = None, n_rows: int | None = None
+) -> pl.LazyFrame:
+    """Read a CSV or Parquet table with column names lowercased.
+    Same as load_table() but returns a LazyFrame.
+
+    Allows streaming and is more suitable for data larger than RAM.
+    """
+    if not source.exists():
+        logger.error(f"File {str(source)} does not exist")
+        raise ValueError(f"File {str(source)} does not exist")
+
+    ext: str = Path(source).suffix.lower()
+    scanner = _SCANNERS.get(ext)
+    if scanner is None:
+        logger.error(f"No loader registered for extension '{ext}'")
+        raise ValueError(f"No loader registered for extension '{ext}'")
+
+    lf: pl.LazyFrame = scanner(source, n_rows)
+    # Remove data types in brackets
+    # Lowercase column names to match the casing convention in the FD loaders.
+    lf = lf.rename({c: c.strip().lower() for c in lf.collect_schema().names()})
+
+    if columns is not None:
+        wanted: list[str] = [c.strip().lower() for c in columns]
+        missing: list[str] = [c for c in wanted if c not in lf.collect_schema().names()]
+        if missing:
+            raise ValueError(f"columns not found: {missing}")
+        lf = lf.select(wanted)
+    return lf

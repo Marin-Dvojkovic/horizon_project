@@ -121,6 +121,7 @@ def run_pipeline(
     from horizon.utils.loaders import load_fds, load_table
 
     ds_dir: Path = DATASETS / dataset
+    ds_name: str = ds_dir.name
     fds_path: Path = ds_dir / "fds.csv"
     clean_path: Path = ds_dir / "clean.csv"
     dirty_path: Path = ds_dir / "dirty.csv"
@@ -168,9 +169,11 @@ def run_pipeline(
         hzn_logger.setLevel(logging.INFO)
         hzn_logger.addHandler(handler)
     try:
-        cleaned, pattern_expressions, _ = pipe.repair_dirty_data(
-            dirty_path, ordered_fds, graph
+        cleaned_path: Path = output_dir / f"{ds_name}_cleaned_data.csv"
+        pattern_expressions, _ = pipe.repair_dirty_data(
+            dirty_path, cleaned_path, ordered_fds, graph
         )
+        cleaned = load_table(cleaned_path)
     finally:
         if handler:
             hzn_logger.removeHandler(handler)
