@@ -121,6 +121,7 @@ def run_pipeline(
     from horizon.utils.loaders import load_fds, load_table
 
     ds_dir: Path = DATASETS / dataset
+    ds_name: str = ds_dir.name
     fds_path: Path = ds_dir / "fds.csv"
     clean_path: Path = ds_dir / "clean.csv"
     dirty_path: Path = ds_dir / "dirty.csv"
@@ -142,10 +143,10 @@ def run_pipeline(
     set_of_fds = load_fds(ds_dir, dirty_path)
     stage(f"Loaded {len(set_of_fds)} functional dependencies")
 
-    ordered_fds, _ = get_ordered_fds(set_of_fds, dataset, output_dir, True)
+    ordered_fds, _ = get_ordered_fds(set_of_fds, ds_name, output_dir, True)
     stage(f"Computed FD traversal order ({len(ordered_fds)} groups)")
 
-    graph = FDPatternGraph(dirty_path, set_of_fds, True)
+    graph = FDPatternGraph(dirty_path, set_of_fds, ds_name, output_dir, True)
     stage("Built FD pattern graph")
 
     dirty = load_table(dirty_path)
@@ -168,9 +169,11 @@ def run_pipeline(
         hzn_logger.setLevel(logging.INFO)
         hzn_logger.addHandler(handler)
     try:
-        cleaned, pattern_expressions, _ = pipe.repair_dirty_data(
-            dirty_path, ordered_fds, graph
+        cleaned_path: Path = output_dir / f"{ds_name}_cleaned_data.csv"
+        pattern_expressions, _ = pipe.repair_dirty_data(
+            dirty_path, cleaned_path, ordered_fds, graph
         )
+        cleaned = load_table(cleaned_path)
     finally:
         if handler:
             hzn_logger.removeHandler(handler)

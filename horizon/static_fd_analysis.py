@@ -101,6 +101,9 @@ class FDGraph:
             i for i in range(n) if out_degrees[i] != in_degrees[i]
         ]
         if len(uneven_vertices) not in [0, 2]:
+            logger.error(
+                "Not possible to find a Eulerian cycle/tour and therefore not possible to order FDs."
+            )
             raise RuntimeError(
                 "Not possible to find a Eulerian cycle/tour and therefore not possible to order FDs."
             )
@@ -116,6 +119,9 @@ class FDGraph:
                 None,
             )
             if tour_start_v != start_v or tour_end_v is None:
+                logger.error(
+                    f"Ordered FDs have length {sum([len(order) for order in ordered_fds])} while there are {len(self._set_of_fds)} FDs."
+                )
                 raise RuntimeError(
                     "Not possible to find a Eulerian tour and therefore not possible to order FDs."
                 )
@@ -248,7 +254,7 @@ class FDGraph:
         ]
 
         if sum([len(order) for order in ordered_fds]) != len(self._set_of_fds):
-            raise RuntimeError(
+            logger.error(
                 f"Ordered FDs have length {sum([len(order) for order in ordered_fds])} while there are {len(self._set_of_fds)} FDs."
             )
 
@@ -394,7 +400,7 @@ class FDGraph:
 
 def get_ordered_fds(
     set_of_fds: SetOfFDs,
-    dataset_name: str,
+    dataset_name: str = "",
     output_dir: Path = Path("output"),
     enable_plotting: bool = True,
 ) -> tuple[list[list[FunctionalDependency]], float]:

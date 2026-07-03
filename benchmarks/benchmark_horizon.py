@@ -8,9 +8,12 @@ import time
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import polars as pl
+import pyarrow.parquet as pq
 
-from eval.effectiveness_eval import evaluate_repair
+from eval.effectiveness_eval import lazy_evaluate_repair
+from horizon.utils.loaders import lazy_load_table
 
 # Parse arguments
 parser: argparse.ArgumentParser = argparse.ArgumentParser(
@@ -44,6 +47,26 @@ parser.add_argument(
     help="Skip benchmarking and only plot results.",
 )
 
+FIELD_NAMES: list[str] = [
+    "dataset",
+    "error_type",
+    "error_rate",
+    "repairability",
+    "n_fds",
+    "n_tuples",
+    "n_dirty",
+    "n_repaired",
+    "n_correct",
+    "precision",
+    "recall",
+    "f1",
+    "order_fds_time",
+    "build_fd_pattern_graph_time",
+    "repair_time",
+    "total_time",
+    "tuples_per_s",
+]
+
 
 def find_datasets(all_datasets_dir: Path) -> list[Path]:
     """Returns a list of all datasets under the given datasets directory."""
@@ -68,9 +91,7 @@ def eval_run(
 ) -> dict:
     """Calls our evaluation module to evaluate the effectiveness of the data repairs. Also adds repair time and throughput.
     If a file cannot be read or the evaluation fails, some metrics will not be recorded."""
-    dirty_data: pl.DataFrame = pl.read_csv(
-        dirty_data_path, infer_schema=False, n_rows=n_rows
-    )
+    dirty_data: pl.LazyFrame = lazy_load_table(dirty_data_path, n_rows=n_rows)
 
     # Get repair time directly from statistics file
     total_time: float = elapsed_time
@@ -95,18 +116,18 @@ def eval_run(
         "build_fd_pattern_graph_time": build_fd_pattern_graph_time,
         "repair_time": repair_time,
         "total_time": total_time,
-        "tuples_per_s": round(len(dirty_data) / total_time, 5),
+        "tuples_per_s": round(n_rows / total_time, 5),
     }
 
     try:
-        clean_data: pl.DataFrame = pl.read_csv(
-            clean_data_path, infer_schema=False, n_rows=n_rows
-        )
-        cleaned_data: pl.DataFrame = pl.read_csv(cleaned_data_path, infer_schema=False)
+        clean_data: pl.LazyFrame = lazy_load_table(clean_data_path, n_rows=n_rows)
+        cleaned_data: pl.LazyFrame = lazy_load_table(cleaned_data_path)
 
         # Call evaluation
-        evaluation: dict = evaluate_repair(clean_data, dirty_data, cleaned_data)
+        evaluation: dict = lazy_evaluate_repair(clean_data, dirty_data, cleaned_data)
         evaluation.update(fixed_metrics)
+        # Delete cleaned file to save space
+        cleaned_data_path.unlink()
     except Exception as e:
         print(f"Evaluation failed with {e}. Continuing...")
         return fixed_metrics
@@ -114,26 +135,34 @@ def eval_run(
     return evaluation
 
 
-def run_horizon(
-    horizon_path: Path, dataset_path: Path, output_path: Path
+def run_horizon_benchmark(
+    horizon_path: Path, dataset_path: Path, output_path: Path, output_csv_path: Path
 ) -> list[dict]:
     """Runs Horizon for the given dataset, for each error type and rate, as well as different numbers of tuples. Returns a list of evaluated runs."""
     evaluated_runs: list[dict] = []
     dataset_name: str = dataset_path.name
 
-    # Get all dirty data files
-    dirty_data_files: list[str] = ["dirty.csv"]
-    if not (dataset_path / "dirty.csv").exists():
-        injected_path: Path = dataset_path / "injected"
-        if not injected_path.exists():
-            print(
-                f"\nNo dirty data file found. Skipping benchmarks for dataset {dataset_path.name}."
-            )
-            return []
+    # Get all dirty data files (default: dirty.csv or dirty.parquet)
+    dirty_data_files: list[str] = [
+        "dirty.csv" if (dataset_path / "dirty.csv").exists() else "dirty.parquet"
+    ]
+    # Check for injected/ over dirty.csv
+    injected_path: Path = dataset_path / "injected"
+    if injected_path.exists():
         dirty_data_files = [
             str(Path("injected") / injected_data.name)
             for injected_data in injected_path.glob("*_r*.csv")
         ]
+    elif len(list(dataset_path.glob("clean.*"))) > 0:
+        # If injected/ does not exist, take clean.csv or clean.parquet
+        dirty_data_files = [
+            "clean.csv" if (dataset_path / "clean.csv").exists() else "clean.parquet"
+        ]
+    else:
+        print(
+            f"\nNo dirty data file found under {str(dataset_path)}. Skipping benchmarks for dataset {dataset_path.name}."
+        )
+        return []
 
     # Get number of FDs
     fd_files: list[Path] = sorted(
@@ -142,7 +171,10 @@ def run_horizon(
     )
     n_fds: int = 0
     if len(fd_files) < 1:
-        print(f"No FD file found under {str(dataset_path)}")
+        print(
+            f"\nNo FD file found under {str(dataset_path)}. Skipping benchmarks for dataset {dataset_path.name}."
+        )
+        return []
     else:
         line_count: int = sum(1 for line in open(fd_files[0], "r").readlines())
         n_fds = line_count - 1 if fd_files[0].suffix == ".csv" else line_count
@@ -150,15 +182,13 @@ def run_horizon(
     # Run Horizon for each error type and rate
     for dirty_data_file in dirty_data_files:
         dirty_data_path: Path = dataset_path / Path(dirty_data_file)
-        total_rows: int = sum(1 for line in open(dirty_data_path, "r").readlines()) - 1
-
-        # Create sub-directory for each dirty data file
-        dirty_data_output_dir: Path = (
-            output_path / dirty_data_path.stem
-            if dirty_data_file != "dirty.csv"
-            else output_path
-        )
-        dirty_data_output_dir.mkdir(exist_ok=True)
+        # Count number of rows to perform experiment for different numbers of tuples
+        total_rows: int = 0
+        if Path(dirty_data_file).suffix.lower() == ".parquet":
+            pf = pq.ParquetFile(dataset_path / dirty_data_file)
+            total_rows = pf.metadata.num_rows
+        else:
+            total_rows = sum(1 for line in open(dirty_data_path, "r").readlines()) - 1
 
         # Get dataset properties
         error_type: str | None = None
@@ -173,6 +203,14 @@ def run_horizon(
         for n_tuples in range(
             round(total_rows / 10), total_rows + 1, round(total_rows / 10)
         ):
+            # Create sub-directory for each dirty data file and number of tuples
+            output_sub_dir: Path = (
+                output_path / dirty_data_path.stem / str(n_tuples)
+                if "injected" in dirty_data_file
+                else output_path / str(n_tuples)
+            )
+            output_sub_dir.mkdir(parents=True, exist_ok=True)
+
             # Run benchmark command
             benchmark_cmd: list[str] = [
                 sys.executable,
@@ -182,7 +220,7 @@ def run_horizon(
                 "--dirty_data_file",
                 str(dirty_data_file),
                 "--output_dir",
-                str(dirty_data_output_dir),
+                str(output_sub_dir),
                 "--log_level",
                 "WARNING",
                 "--n_rows",
@@ -220,10 +258,12 @@ def run_horizon(
             # Compute evaluation
             print(f"Evaluating {dataset_name} with dirty data {dirty_data_file}...")
             evaluation: dict = eval_run(
-                dataset_path / "clean.csv",
+                dataset_path / "clean.csv"
+                if (dataset_path / "clean.csv").exists()
+                else dataset_path / "clean.parquet",
                 dirty_data_path,
-                dirty_data_output_dir / f"{dataset_name}_cleaned_data.csv",
-                dirty_data_output_dir / f"{dataset_name}_statistics.json",
+                output_sub_dir / f"{dataset_name}_cleaned_data.csv",
+                output_sub_dir / f"{dataset_name}_statistics.json",
                 n_tuples,
                 elapsed_time,
             )
@@ -247,20 +287,31 @@ def run_horizon(
 
             evaluated_runs.append(evaluation)
 
+            # Write evaluation directly to results csv
+            with open(output_csv_path, "a", newline="") as csv_file:
+                writer: csv.DictWriter = csv.DictWriter(
+                    csv_file, fieldnames=FIELD_NAMES
+                )
+                writer.writerow(evaluation)
+
     return evaluated_runs
+
+
+def millions_formatter(x: int, pos) -> str:
+    return "%1.2fM" % (x * 1e-6)
 
 
 def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
     """Creates plots for one dataset with different error types and rates, as well as different numbers of tuples.
     The first type of plots (f1_plot) show the F1 score for increasing error rates, the second type of plots show the throughput for increasing number of tuples, and the third type of plots (repair_time_plot) show the repair time for increasing numbers of tuples."""
+    # Create plot for each error type and repairability, for the full amount of tuples
+    eval_f1: pl.DataFrame = (
+        evals.sort("error_rate")
+        .group_by(["error_type", "repairability", "n_tuples"], maintain_order=True)
+        .agg(pl.col("error_rate") * 100, pl.col("f1"))
+    ).filter(pl.col("n_tuples") == pl.col("n_tuples").max())
+    # Plot F1 score for increasing error rates
     try:
-        # Create plot for each error type and repairability, for the full amount of tuples
-        eval_f1: pl.DataFrame = (
-            evals.sort("error_rate")
-            .group_by(["error_type", "repairability", "n_tuples"], maintain_order=True)
-            .agg(pl.col("error_rate") * 100, pl.col("f1"))
-        ).filter(pl.col("n_tuples") == pl.col("n_tuples").max())
-        # Plot F1 score for increasing error rates
         for row in eval_f1.iter_rows(named=True):
             # Skip if only one point
             if len(row["error_rate"]) < 2:
@@ -279,22 +330,27 @@ def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
             )
             plt.savefig(f1_plot_path)
             plt.clf()
+    except Exception as e:
+        print(f"Plotting F1 score failed with: {e}. Continuing...")
 
-        # Create plot for each error type, rate, and repairability
-        eval_throughput: pl.DataFrame = (
-            evals.sort("n_tuples")
-            .group_by(
-                ["error_type", "error_rate", "repairability"], maintain_order=True
-            )
-            .agg(pl.col("n_tuples"), pl.col("tuples_per_s"))
-        )
-        # Plot throughput for increasing numbers of tuples
+    # Create plot for each error type, rate, and repairability
+    eval_throughput: pl.DataFrame = (
+        evals.sort("n_tuples")
+        .group_by(["error_type", "error_rate", "repairability"], maintain_order=True)
+        .agg(pl.col("n_tuples"), pl.col("tuples_per_s"))
+    )
+    # Plot throughput for increasing numbers of tuples
+    try:
         for row in eval_throughput.iter_rows(named=True):
             # Skip if only one point
             if len(row["n_tuples"]) < 2:
                 continue
             plt.plot(row["n_tuples"], row["tuples_per_s"], ".-")
             plt.xticks(row["n_tuples"])
+            if row["n_tuples"][0] > 1000000:
+                plt.gca().xaxis.set_major_formatter(
+                    ticker.FuncFormatter(millions_formatter)
+                )
             plt.xlabel("Number of tuples")
             plt.ylabel("Throughput (tuples/s)")
             plt.grid()
@@ -308,22 +364,23 @@ def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
             )
             plt.savefig(throughput_plot_path)
             plt.clf()
+    except Exception as e:
+        print(f"Plotting throughput failed with: {e}. Continuing...")
 
-        # Create plot for each error type, rate, and repairability
-        eval_repair_time: pl.DataFrame = (
-            evals.sort("n_tuples")
-            .group_by(
-                ["error_type", "error_rate", "repairability"], maintain_order=True
-            )
-            .agg(
-                pl.col("n_tuples"),
-                pl.col("order_fds_time") * 1000,
-                pl.col("build_fd_pattern_graph_time") * 1000,
-                pl.col("repair_time") * 1000,
-                pl.col("total_time") * 1000,
-            )
+    # Create plot for each error type, rate, and repairability
+    eval_repair_time: pl.DataFrame = (
+        evals.sort("n_tuples")
+        .group_by(["error_type", "error_rate", "repairability"], maintain_order=True)
+        .agg(
+            pl.col("n_tuples"),
+            pl.col("order_fds_time") * 1000,
+            pl.col("build_fd_pattern_graph_time") * 1000,
+            pl.col("repair_time") * 1000,
+            pl.col("total_time") * 1000,
         )
-        # Plot repair time for increasing numbers of tuples
+    )
+    # Plot repair time for increasing numbers of tuples
+    try:
         for row in eval_repair_time.iter_rows(named=True):
             # Skip if only one point
             if len(row["n_tuples"]) < 2:
@@ -346,6 +403,10 @@ def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
                 )
                 bottom = [sum(values) for values in zip(bottom, row[key], strict=True)]
             plt.xticks(row["n_tuples"])
+            if row["n_tuples"][0] > 1000000:
+                plt.gca().xaxis.set_major_formatter(
+                    ticker.FuncFormatter(millions_formatter)
+                )
             plt.xlabel("Number of tuples")
             plt.ylabel("Repair time (ms)")
             plt.grid(axis="y")
@@ -361,7 +422,7 @@ def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
             plt.savefig(repair_time_plot_path)
             plt.clf()
     except Exception as e:
-        print(f"Plotting failed with: {e}. Continuing...")
+        print(f"Plotting repair time failed with: {e}. Continuing...")
 
 
 def plot_all(results: pl.DataFrame, output_dir: Path) -> None:
@@ -399,26 +460,7 @@ def main(
 
     # Create results csv file and write header
     with open(results_file, "a", newline="") as csv_file:
-        fieldnames: list[str] = [
-            "dataset",
-            "error_type",
-            "error_rate",
-            "repairability",
-            "n_fds",
-            "n_tuples",
-            "n_dirty",
-            "n_repaired",
-            "n_correct",
-            "precision",
-            "recall",
-            "f1",
-            "order_fds_time",
-            "build_fd_pattern_graph_time",
-            "repair_time",
-            "total_time",
-            "tuples_per_s",
-        ]
-        writer: csv.DictWriter = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer: csv.DictWriter = csv.DictWriter(csv_file, fieldnames=FIELD_NAMES)
         writer.writeheader()
 
     # Find all datasets
@@ -434,17 +476,13 @@ def main(
         print(f"\nStarting runs for dataset {i + 1}/{len(datasets)}.\n")
 
         # Run Horizon
-        evaluation: list[dict] = run_horizon(
-            horizon_path, dataset_path, dataset_output_dir
+        evaluation: list[dict] = run_horizon_benchmark(
+            horizon_path, dataset_path, dataset_output_dir, results_file
         )
         # Remove dataset output directory if benchmark failed
         if len(evaluation) == 0:
             dataset_output_dir.rmdir()
             continue
-        # Write evaluation to results csv
-        with open(results_file, "a", newline="") as csv_file:
-            writer: csv.DictWriter = csv.DictWriter(csv_file, fieldnames=fieldnames)
-            writer.writerows(evaluation)
 
         print(f"\nPlotting runs for dataset {i + 1}/{len(datasets)}.\n")
         plot_dataset(pl.DataFrame(evaluation), dataset_output_dir)

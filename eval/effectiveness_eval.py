@@ -74,3 +74,59 @@ def evaluate_repair(
     p = precision(counts["n_correct"], counts["n_repaired"])
     r = recall(counts["n_correct"], counts["n_dirty"])
     return {**counts, "precision": p, "recall": r, "f1": f1(p, r)}
+
+
+def lazy_repair_counts(
+    clean: pl.LazyFrame, dirty: pl.LazyFrame, cleaned: pl.LazyFrame
+) -> dict[str, int]:
+    """Same as repair_counts(), but operates on LazyFrames."""
+    # Check lazy frame lengths
+    if not (
+        clean.select(pl.len()).collect().item()
+        == dirty.select(pl.len()).collect().item()
+        == cleaned.select(pl.len()).collect().item()
+    ):
+        raise ValueError(
+            f"row counts differ: clean={clean.select(pl.len()).collect().item()}, "
+            f"dirty={dirty.select(pl.len()).collect().item()}, cleaned={cleaned.select(pl.len()).collect().item()}"
+        )
+
+    columns: list[str] = [
+        c
+        for c in clean.collect_schema().names()
+        if c in dirty.collect_schema().names() and c in cleaned.collect_schema().names()
+    ]
+    n_dirty = n_repaired = n_correct = 0
+
+    # Iterate in batches over clean, dirty, and cleaned lazy frames
+    batch_size: int = 1000
+    for clean_df, dirty_df, cleaned_df in zip(
+        clean.collect_batches(
+            maintain_order=True, engine="streaming", chunk_size=batch_size
+        ),
+        dirty.collect_batches(
+            maintain_order=True, engine="streaming", chunk_size=batch_size
+        ),
+        cleaned.collect_batches(
+            maintain_order=True, engine="streaming", chunk_size=batch_size
+        ),
+    ):
+        for c in columns:
+            error = dirty_df[c].ne_missing(clean_df[c])
+            changed = cleaned_df[c].ne_missing(dirty_df[c])
+            correct = changed & cleaned_df[c].eq_missing(clean_df[c])
+            n_dirty += int(error.sum())
+            n_repaired += int(changed.sum())
+            n_correct += int(correct.sum())
+
+    return {"n_dirty": n_dirty, "n_repaired": n_repaired, "n_correct": n_correct}
+
+
+def lazy_evaluate_repair(
+    clean: pl.LazyFrame, dirty: pl.LazyFrame, cleaned: pl.LazyFrame
+) -> dict:
+    """Same as evaluate_repairs(), but operates on LazyFrames."""
+    counts = lazy_repair_counts(clean, dirty, cleaned)
+    p = precision(counts["n_correct"], counts["n_repaired"])
+    r = recall(counts["n_correct"], counts["n_dirty"])
+    return {**counts, "precision": p, "recall": r, "f1": f1(p, r)}
