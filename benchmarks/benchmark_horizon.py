@@ -10,7 +10,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import polars as pl
 
-from eval.effectiveness_eval import evaluate_repair
+from eval.effectiveness_eval import lazy_evaluate_repair
+from horizon.utils.loaders import lazy_load_table
 
 # Parse arguments
 parser: argparse.ArgumentParser = argparse.ArgumentParser(
@@ -44,6 +45,26 @@ parser.add_argument(
     help="Skip benchmarking and only plot results.",
 )
 
+FIELD_NAMES: list[str] = [
+    "dataset",
+    "error_type",
+    "error_rate",
+    "repairability",
+    "n_fds",
+    "n_tuples",
+    "n_dirty",
+    "n_repaired",
+    "n_correct",
+    "precision",
+    "recall",
+    "f1",
+    "order_fds_time",
+    "build_fd_pattern_graph_time",
+    "repair_time",
+    "total_time",
+    "tuples_per_s",
+]
+
 
 def find_datasets(all_datasets_dir: Path) -> list[Path]:
     """Returns a list of all datasets under the given datasets directory."""
@@ -68,9 +89,7 @@ def eval_run(
 ) -> dict:
     """Calls our evaluation module to evaluate the effectiveness of the data repairs. Also adds repair time and throughput.
     If a file cannot be read or the evaluation fails, some metrics will not be recorded."""
-    dirty_data: pl.DataFrame = pl.read_csv(
-        dirty_data_path, infer_schema=False, n_rows=n_rows
-    )
+    dirty_data: pl.LazyFrame = lazy_load_table(dirty_data_path, n_rows=n_rows)
 
     # Get repair time directly from statistics file
     total_time: float = elapsed_time
@@ -95,18 +114,19 @@ def eval_run(
         "build_fd_pattern_graph_time": build_fd_pattern_graph_time,
         "repair_time": repair_time,
         "total_time": total_time,
-        "tuples_per_s": round(len(dirty_data) / total_time, 5),
+        "tuples_per_s": round(n_rows / total_time, 5),
     }
 
     try:
-        clean_data: pl.DataFrame = pl.read_csv(
-            clean_data_path, infer_schema=False, n_rows=n_rows
-        )
-        cleaned_data: pl.DataFrame = pl.read_csv(cleaned_data_path, infer_schema=False)
+        clean_data: pl.LazyFrame = lazy_load_table(clean_data_path, n_rows=n_rows)
+        cleaned_data: pl.LazyFrame = lazy_load_table(cleaned_data_path)
 
         # Call evaluation
-        evaluation: dict = evaluate_repair(clean_data, dirty_data, cleaned_data)
+        # TODO: Make eval memory efficient
+        evaluation: dict = lazy_evaluate_repair(clean_data, dirty_data, cleaned_data)
         evaluation.update(fixed_metrics)
+        # Delete cleaned file to save space
+        cleaned_data_path.unlink()
     except Exception as e:
         print(f"Evaluation failed with {e}. Continuing...")
         return fixed_metrics
@@ -115,7 +135,7 @@ def eval_run(
 
 
 def run_horizon(
-    horizon_path: Path, dataset_path: Path, output_path: Path
+    horizon_path: Path, dataset_path: Path, output_path: Path, output_csv_path: Path
 ) -> list[dict]:
     """Runs Horizon for the given dataset, for each error type and rate, as well as different numbers of tuples. Returns a list of evaluated runs."""
     evaluated_runs: list[dict] = []
@@ -253,6 +273,13 @@ def run_horizon(
             evaluation.update(dirty_data_properties)
 
             evaluated_runs.append(evaluation)
+
+            # Write evaluation directly to results csv
+            with open(output_csv_path, "a", newline="") as csv_file:
+                writer: csv.DictWriter = csv.DictWriter(
+                    csv_file, fieldnames=FIELD_NAMES
+                )
+                writer.writerow(evaluation)
 
     return evaluated_runs
 
@@ -406,26 +433,7 @@ def main(
 
     # Create results csv file and write header
     with open(results_file, "a", newline="") as csv_file:
-        fieldnames: list[str] = [
-            "dataset",
-            "error_type",
-            "error_rate",
-            "repairability",
-            "n_fds",
-            "n_tuples",
-            "n_dirty",
-            "n_repaired",
-            "n_correct",
-            "precision",
-            "recall",
-            "f1",
-            "order_fds_time",
-            "build_fd_pattern_graph_time",
-            "repair_time",
-            "total_time",
-            "tuples_per_s",
-        ]
-        writer: csv.DictWriter = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer: csv.DictWriter = csv.DictWriter(csv_file, fieldnames=FIELD_NAMES)
         writer.writeheader()
 
     # Find all datasets
@@ -442,16 +450,12 @@ def main(
 
         # Run Horizon
         evaluation: list[dict] = run_horizon(
-            horizon_path, dataset_path, dataset_output_dir
+            horizon_path, dataset_path, dataset_output_dir, results_file
         )
         # Remove dataset output directory if benchmark failed
         if len(evaluation) == 0:
             dataset_output_dir.rmdir()
             continue
-        # Write evaluation to results csv
-        with open(results_file, "a", newline="") as csv_file:
-            writer: csv.DictWriter = csv.DictWriter(csv_file, fieldnames=fieldnames)
-            writer.writerows(evaluation)
 
         print(f"\nPlotting runs for dataset {i + 1}/{len(datasets)}.\n")
         plot_dataset(pl.DataFrame(evaluation), dataset_output_dir)

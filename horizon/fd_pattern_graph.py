@@ -15,7 +15,7 @@ import networkx as nx
 import polars as pl
 from fds.fd import FunctionalDependency
 from fds.set_of_fds import SetOfFDs
-from utils.loaders import load_table
+from utils.loaders import lazy_load_table
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -52,8 +52,7 @@ class FDPatternGraph:
         logger.debug(f"Loading data from {str(data_path)}")
 
         fd_columns: set[str] = set_of_fds.unique_attributes
-        data: pl.DataFrame = load_table(data_path, list(fd_columns))
-        logger.info(f"Loaded data: {len(data)} rows, {len(fd_columns)} columns")
+        data: pl.LazyFrame = lazy_load_table(data_path, list(fd_columns))
 
         start: float = time.time()
 
@@ -112,7 +111,7 @@ class FDPatternGraph:
         col_name, _, value = node_id.partition("__")
         return col_name, value
 
-    def _build_graph(self, data: pl.DataFrame, set_of_fds: SetOfFDs) -> nx.DiGraph:
+    def _build_graph(self, data: pl.LazyFrame, set_of_fds: SetOfFDs) -> nx.DiGraph:
         """
         Build the graph with nodes for unique (column, value) pairs
         and edges based on functional dependencies.
@@ -130,7 +129,7 @@ class FDPatternGraph:
         )
         ordered_set_of_fds.reverse()
 
-        number_of_tuples: int = len(data)
+        n_tuples: int = data.select(pl.len()).collect().item()
         skipped_edges: list[tuple] = []
         # Add nodes and edges for each FD and value combination
         # Compute edge quality on the fly
@@ -144,7 +143,7 @@ class FDPatternGraph:
             # breaks quality ties by first-inserted edge, and the old Counter inserted
             # edges in first-occurrence (row) order. Hash order would change tie-breaks
             # and thus the repairs.
-            pair_counts: pl.DataFrame = data.group_by(
+            pair_counts: pl.LazyFrame = data.group_by(
                 fd.lhs, fd.rhs, maintain_order=True
             ).len()
 
@@ -156,60 +155,65 @@ class FDPatternGraph:
                         self._cell_node_id(fd.lhs, row[fd.lhs]),
                         self._cell_node_id(fd.rhs, row[fd.rhs]),
                         {
-                            "support": row["len"] / number_of_tuples,
-                            "quality": row["len"] / number_of_tuples,
+                            "support": row["len"] / n_tuples,
+                            "quality": row["len"] / n_tuples,
                             "back_edge": fd.cyclic,
                             "sum_support": 0,
                             "n_reachable": 0,
                         },
                     )
-                    for row in pair_counts.iter_rows(named=True)
+                    for df in pair_counts.collect_batches(
+                        maintain_order=True, engine="streaming"
+                    )
+                    for row in df.iter_rows(named=True)
                 ]
                 skipped_edges.extend(back_edges)
                 G.add_edges_from(back_edges)
                 continue
 
             # Compute quality for each FD edge (non back-edges)
-            for row in pair_counts.iter_rows(named=True):
-                from_node = self._cell_node_id(fd.lhs, row[fd.lhs])
-                to_node = self._cell_node_id(fd.rhs, row[fd.rhs])
-                G.add_nodes_from([from_node, to_node])
+            for df in pair_counts.collect_batches(
+                maintain_order=True, engine="streaming"
+            ):
+                for row in df.iter_rows(named=True):
+                    from_node = self._cell_node_id(fd.lhs, row[fd.lhs])
+                    to_node = self._cell_node_id(fd.rhs, row[fd.rhs])
+                    G.add_nodes_from([from_node, to_node])
 
-                support: float = row["len"] / number_of_tuples
+                    support: float = row["len"] / n_tuples
 
-                # Sum over direct neighbor's summed support to get reachable support
-                reachable_support: int = sum(
-                    [
-                        G[to_node][direct_neighbor]["sum_support"]
-                        for direct_neighbor in G.successors(to_node)
-                        if not G[to_node][direct_neighbor]["back_edge"]
-                    ]
-                )
-                # Store support sum and number of reachable FDs for each edge
-                sum_support: float = support + reachable_support
-                n_reachable: int = sum(
-                    [
-                        G[to_node][direct_neighbor]["n_reachable"] + 1
-                        for direct_neighbor in G.successors(to_node)
-                        if not G[to_node][direct_neighbor]["back_edge"]
-                    ]
-                )
+                    # Sum over direct neighbor's summed support to get reachable support
+                    reachable_support: int = sum(
+                        [
+                            G[to_node][direct_neighbor]["sum_support"]
+                            for direct_neighbor in G.successors(to_node)
+                            if not G[to_node][direct_neighbor]["back_edge"]
+                        ]
+                    )
+                    # Store support sum and number of reachable FDs for each edge
+                    sum_support: float = support + reachable_support
+                    n_reachable: int = sum(
+                        [
+                            G[to_node][direct_neighbor]["n_reachable"] + 1
+                            for direct_neighbor in G.successors(to_node)
+                            if not G[to_node][direct_neighbor]["back_edge"]
+                        ]
+                    )
 
-                # Add edge and calculate quality via sum_support / (n_reachable + 1)
-                G.add_edge(
-                    from_node,
-                    to_node,
-                    support=support,
-                    quality=sum_support / (n_reachable + 1),
-                    back_edge=fd.cyclic,
-                    sum_support=sum_support,
-                    n_reachable=n_reachable,
-                )
+                    # Add edge and calculate quality via sum_support / (n_reachable + 1)
+                    G.add_edge(
+                        from_node,
+                        to_node,
+                        support=support,
+                        quality=sum_support / (n_reachable + 1),
+                        back_edge=fd.cyclic,
+                        sum_support=sum_support,
+                        n_reachable=n_reachable,
+                    )
 
         # Compute quality of skipped back-edges
-        for from_node, to_node, edge_data in skipped_edges:
-            # TODO: Compute quality for back-edges
-            return G
+        # for from_node, to_node, edge_data in skipped_edges:
+        # TODO: Compute quality for back-edges
 
         # quality is now final; the repair only ever reads `quality` (see
         # choose_best_next_edge / get_edge_quality). Drop the per-edge scratch
