@@ -99,10 +99,17 @@ def lazy_repair_counts(
     n_dirty = n_repaired = n_correct = 0
 
     # Iterate in batches over clean, dirty, and cleaned lazy frames
+    batch_size: int = 1000
     for clean_df, dirty_df, cleaned_df in zip(
-        clean.collect_batches(maintain_order=True, engine="streaming"),
-        dirty.collect_batches(maintain_order=True, engine="streaming"),
-        cleaned.collect_batches(maintain_order=True, engine="streaming"),
+        clean.collect_batches(
+            maintain_order=True, engine="streaming", chunk_size=batch_size
+        ),
+        dirty.collect_batches(
+            maintain_order=True, engine="streaming", chunk_size=batch_size
+        ),
+        cleaned.collect_batches(
+            maintain_order=True, engine="streaming", chunk_size=batch_size
+        ),
     ):
         for c in columns:
             error = dirty_df[c].ne_missing(clean_df[c])

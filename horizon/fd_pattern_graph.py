@@ -20,8 +20,6 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-output_dir: Path = Path("output")
-
 
 class FDPatternGraph:
     """
@@ -35,7 +33,12 @@ class FDPatternGraph:
     graph: nx.DiGraph
 
     def __init__(
-        self, data_path: Path, set_of_fds: SetOfFDs, enable_plotting: bool = False
+        self,
+        data_path: Path,
+        set_of_fds: SetOfFDs,
+        dataset_name: str = "",
+        output_dir: Path = Path("output"),
+        enable_plotting: bool = False,
     ) -> None:
         """
         Initialize the FDPatternGraph.
@@ -85,7 +88,7 @@ class FDPatternGraph:
                 pos=nx.circular_layout(sub_g),
                 edge_labels=nx.get_edge_attributes(sub_g, "quality"),
             )
-            plt.savefig(str(output_dir / "fd_pattern_graph.png"))
+            plt.savefig(str(output_dir / f"{dataset_name}_fd_pattern_graph.png"))
             plt.clf()
 
     def _cell_node_id(self, col_name: str, value) -> str:

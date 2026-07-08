@@ -122,7 +122,6 @@ def eval_run(
         cleaned_data: pl.LazyFrame = lazy_load_table(cleaned_data_path)
 
         # Call evaluation
-        # TODO: Make eval memory efficient
         evaluation: dict = lazy_evaluate_repair(clean_data, dirty_data, cleaned_data)
         evaluation.update(fixed_metrics)
         # Delete cleaned file to save space

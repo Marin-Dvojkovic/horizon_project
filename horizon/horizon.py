@@ -195,27 +195,19 @@ def repair_dirty_data(
     return pattern_expressions, elapsed_time
 
 
-def main(
-    dataset_dir: Path,
+def run_horizon(
+    dataset_name: str,
+    dirty_data_path: Path,
+    set_of_fds: SetOfFDs,
     output_dir: Path,
-    dirty_data_file: str,
-    n_rows: int | None,
-    enable_plotting: bool,
-    collect_pattern_expressions: bool,
+    n_rows: int | None = None,
+    enable_plotting: bool = False,
+    collect_pattern_expressions: bool = True,
 ) -> None:
-    dataset_name: str = dataset_dir.name
-
-    logger.info(
-        f"Starting Horizon pipeline with dataset '{dataset_name}': {dataset_dir}"
-    )
-
-    # Data path
-    dirty_data_path: Path = dataset_dir / dirty_data_file
-    logger.debug(f"Dirty data path: {dirty_data_path}")
-
-    # Load FDs
-    logger.info("Loading functional dependencies...")
-    set_of_fds: SetOfFDs = load_fds(dataset_dir, dirty_data_path)
+    # Create output directory
+    if not output_dir.exists:
+        logger.info(f"Creating output directory under {output_dir}")
+    output_dir.mkdir(exist_ok=True)
 
     # Get traversal order
     logger.info("Computing traversal order for FDs...")
@@ -226,7 +218,7 @@ def main(
     # Build FD pattern graph
     logger.info("Building FD pattern graph...")
     fd_pattern_graph: FDPatternGraph = FDPatternGraph(
-        dirty_data_path, set_of_fds, enable_plotting
+        dirty_data_path, set_of_fds, dataset_name, output_dir, enable_plotting
     )
 
     # Compute repairs for dirty data
@@ -238,11 +230,6 @@ def main(
         n_rows,
         collect_pattern_expressions,
     )
-
-    # Create output directory
-    if not output_dir.exists:
-        logger.info(f"Creating output directory under {output_dir}")
-    output_dir.mkdir(exist_ok=True)
 
     # Save repair time statistics
     stat_output_path: Path = output_dir / f"{dataset_name}_statistics.json"
@@ -268,6 +255,42 @@ def main(
         logger.info(f"Final pattern expressions saved to {exp_output_path}")
 
 
+def main(
+    dataset_dir: Path,
+    dirty_data_file: str,
+    output_dir: Path,
+    n_rows: int | None,
+    enable_plotting: bool,
+    collect_pattern_expressions: bool,
+) -> None:
+    # Verify data path
+    dirty_data_path: Path = dataset_dir / dirty_data_file
+    if not dirty_data_path.exists():
+        logger.error(f"File {dirty_data_path} does not exist")
+        raise ValueError(f"File {dirty_data_path} does not exist")
+    logger.debug(f"Dirty data path: {dirty_data_path}")
+
+    # Load FDs
+    logger.info("Loading functional dependencies...")
+    set_of_fds: SetOfFDs = load_fds(dataset_dir, dirty_data_path)
+
+    dataset_name: str = dataset_dir.name
+
+    logger.info(
+        f"Starting Horizon pipeline with dataset '{dataset_name}': {dataset_dir}"
+    )
+
+    run_horizon(
+        dataset_name,
+        dirty_data_path,
+        set_of_fds,
+        output_dir,
+        n_rows,
+        enable_plotting,
+        collect_pattern_expressions,
+    )
+
+
 if __name__ == "__main__":
     # Parse arguments
     args: argparse.Namespace = parser.parse_args()
@@ -280,8 +303,8 @@ if __name__ == "__main__":
     try:
         main(
             Path(args.dataset_dir),
-            Path(args.output_dir),
             args.dirty_data_file,
+            Path(args.output_dir),
             args.n_rows,
             args.enable_plotting,
             args.collect_pattern_expressions,

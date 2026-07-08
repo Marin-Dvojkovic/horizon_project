@@ -53,7 +53,9 @@ def build_fd_pattern_graph_test(dataset_name: str) -> None:
     get_ordered_fds(fds, dataset_name, OUTPUT_DIR)
 
     # Build FD pattern graph
-    fd_pattern_graph: FDPatternGraph = FDPatternGraph(dirty_data_path, fds, True)
+    fd_pattern_graph: FDPatternGraph = FDPatternGraph(
+        dirty_data_path, fds, dataset_name, OUTPUT_DIR, True
+    )
 
     # Assert correct qualities
     for from_node, to_node, correct_quality in correct_qualities[dataset_name]:

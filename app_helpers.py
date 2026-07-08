@@ -143,10 +143,10 @@ def run_pipeline(
     set_of_fds = load_fds(ds_dir, dirty_path)
     stage(f"Loaded {len(set_of_fds)} functional dependencies")
 
-    ordered_fds, _ = get_ordered_fds(set_of_fds, dataset, output_dir, True)
+    ordered_fds, _ = get_ordered_fds(set_of_fds, ds_name, output_dir, True)
     stage(f"Computed FD traversal order ({len(ordered_fds)} groups)")
 
-    graph = FDPatternGraph(dirty_path, set_of_fds, True)
+    graph = FDPatternGraph(dirty_path, set_of_fds, ds_name, output_dir, True)
     stage("Built FD pattern graph")
 
     dirty = load_table(dirty_path)

@@ -4,11 +4,9 @@ import polars as pl
 import pytest
 from polars.testing import assert_frame_equal
 
-from horizon.fd_pattern_graph import FDPatternGraph
 from horizon.fds.fd import FunctionalDependency
 from horizon.fds.set_of_fds import SetOfFDs
-from horizon.horizon import repair_dirty_data
-from horizon.static_fd_analysis import get_ordered_fds
+from horizon.horizon import run_horizon
 from horizon.utils.loaders import load_table
 
 TEST_DATA_DIR: Path = Path(__file__).parent.resolve() / "test_data"
@@ -33,24 +31,15 @@ def all_test_datasets() -> list[str]:
 
 def repair_dirty_data_test(dataset_name: str) -> None:
     dirty_data_path: Path = TEST_DATA_DIR / f"{dataset_name}_dirty.csv"
-    clean_data_path: Path = TEST_DATA_DIR / f"{dataset_name}_clean.csv"
-
     fds: SetOfFDs = set_of_fds[dataset_name]
-
-    # Get traversal order
-    ordered_fds: list[list[FunctionalDependency]] = get_ordered_fds(
-        fds, dataset_name, OUTPUT_DIR
-    )[0]
-
-    # Build FD pattern graph
-    fd_pattern_graph: FDPatternGraph = FDPatternGraph(dirty_data_path, fds)
 
     # Compute repairs for dirty data
     cleaned_data_path: Path = OUTPUT_DIR / f"{dataset_name}_cleaned_data.csv"
-    repair_dirty_data(dirty_data_path, cleaned_data_path, ordered_fds, fd_pattern_graph)
+    run_horizon(dataset_name, dirty_data_path, fds, OUTPUT_DIR)
     cleaned_data: pl.DataFrame = load_table(cleaned_data_path)
 
     # Assert correctness of repairs
+    clean_data_path: Path = TEST_DATA_DIR / f"{dataset_name}_clean.csv"
     clean_data: pl.DataFrame = load_table(clean_data_path)
 
     assert_frame_equal(cleaned_data, clean_data)
