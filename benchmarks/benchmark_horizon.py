@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import polars as pl
 import pyarrow.parquet as pq
 
@@ -296,17 +297,21 @@ def run_horizon_benchmark(
     return evaluated_runs
 
 
+def millions_formatter(x: int, pos) -> str:
+    return "%1.2fM" % (x * 1e-6)
+
+
 def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
     """Creates plots for one dataset with different error types and rates, as well as different numbers of tuples.
     The first type of plots (f1_plot) show the F1 score for increasing error rates, the second type of plots show the throughput for increasing number of tuples, and the third type of plots (repair_time_plot) show the repair time for increasing numbers of tuples."""
+    # Create plot for each error type and repairability, for the full amount of tuples
+    eval_f1: pl.DataFrame = (
+        evals.sort("error_rate")
+        .group_by(["error_type", "repairability", "n_tuples"], maintain_order=True)
+        .agg(pl.col("error_rate") * 100, pl.col("f1"))
+    ).filter(pl.col("n_tuples") == pl.col("n_tuples").max())
+    # Plot F1 score for increasing error rates
     try:
-        # Create plot for each error type and repairability, for the full amount of tuples
-        eval_f1: pl.DataFrame = (
-            evals.sort("error_rate")
-            .group_by(["error_type", "repairability", "n_tuples"], maintain_order=True)
-            .agg(pl.col("error_rate") * 100, pl.col("f1"))
-        ).filter(pl.col("n_tuples") == pl.col("n_tuples").max())
-        # Plot F1 score for increasing error rates
         for row in eval_f1.iter_rows(named=True):
             # Skip if only one point
             if len(row["error_rate"]) < 2:
@@ -325,22 +330,27 @@ def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
             )
             plt.savefig(f1_plot_path)
             plt.clf()
+    except Exception as e:
+        print(f"Plotting F1 score failed with: {e}. Continuing...")
 
-        # Create plot for each error type, rate, and repairability
-        eval_throughput: pl.DataFrame = (
-            evals.sort("n_tuples")
-            .group_by(
-                ["error_type", "error_rate", "repairability"], maintain_order=True
-            )
-            .agg(pl.col("n_tuples"), pl.col("tuples_per_s"))
-        )
-        # Plot throughput for increasing numbers of tuples
+    # Create plot for each error type, rate, and repairability
+    eval_throughput: pl.DataFrame = (
+        evals.sort("n_tuples")
+        .group_by(["error_type", "error_rate", "repairability"], maintain_order=True)
+        .agg(pl.col("n_tuples"), pl.col("tuples_per_s"))
+    )
+    # Plot throughput for increasing numbers of tuples
+    try:
         for row in eval_throughput.iter_rows(named=True):
             # Skip if only one point
             if len(row["n_tuples"]) < 2:
                 continue
             plt.plot(row["n_tuples"], row["tuples_per_s"], ".-")
             plt.xticks(row["n_tuples"])
+            if row["n_tuples"][0] > 1000000:
+                plt.gca().xaxis.set_major_formatter(
+                    ticker.FuncFormatter(millions_formatter)
+                )
             plt.xlabel("Number of tuples")
             plt.ylabel("Throughput (tuples/s)")
             plt.grid()
@@ -354,22 +364,23 @@ def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
             )
             plt.savefig(throughput_plot_path)
             plt.clf()
+    except Exception as e:
+        print(f"Plotting throughput failed with: {e}. Continuing...")
 
-        # Create plot for each error type, rate, and repairability
-        eval_repair_time: pl.DataFrame = (
-            evals.sort("n_tuples")
-            .group_by(
-                ["error_type", "error_rate", "repairability"], maintain_order=True
-            )
-            .agg(
-                pl.col("n_tuples"),
-                pl.col("order_fds_time") * 1000,
-                pl.col("build_fd_pattern_graph_time") * 1000,
-                pl.col("repair_time") * 1000,
-                pl.col("total_time") * 1000,
-            )
+    # Create plot for each error type, rate, and repairability
+    eval_repair_time: pl.DataFrame = (
+        evals.sort("n_tuples")
+        .group_by(["error_type", "error_rate", "repairability"], maintain_order=True)
+        .agg(
+            pl.col("n_tuples"),
+            pl.col("order_fds_time") * 1000,
+            pl.col("build_fd_pattern_graph_time") * 1000,
+            pl.col("repair_time") * 1000,
+            pl.col("total_time") * 1000,
         )
-        # Plot repair time for increasing numbers of tuples
+    )
+    # Plot repair time for increasing numbers of tuples
+    try:
         for row in eval_repair_time.iter_rows(named=True):
             # Skip if only one point
             if len(row["n_tuples"]) < 2:
@@ -392,6 +403,10 @@ def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
                 )
                 bottom = [sum(values) for values in zip(bottom, row[key], strict=True)]
             plt.xticks(row["n_tuples"])
+            if row["n_tuples"][0] > 1000000:
+                plt.gca().xaxis.set_major_formatter(
+                    ticker.FuncFormatter(millions_formatter)
+                )
             plt.xlabel("Number of tuples")
             plt.ylabel("Repair time (ms)")
             plt.grid(axis="y")
@@ -407,7 +422,7 @@ def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
             plt.savefig(repair_time_plot_path)
             plt.clf()
     except Exception as e:
-        print(f"Plotting failed with: {e}. Continuing...")
+        print(f"Plotting repair time failed with: {e}. Continuing...")
 
 
 def plot_all(results: pl.DataFrame, output_dir: Path) -> None:
