@@ -9,6 +9,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import polars as pl
+import pyarrow.parquet as pq
 
 from eval.effectiveness_eval import lazy_evaluate_repair
 from horizon.utils.loaders import lazy_load_table
@@ -133,15 +134,17 @@ def eval_run(
     return evaluation
 
 
-def run_horizon(
+def run_horizon_benchmark(
     horizon_path: Path, dataset_path: Path, output_path: Path, output_csv_path: Path
 ) -> list[dict]:
     """Runs Horizon for the given dataset, for each error type and rate, as well as different numbers of tuples. Returns a list of evaluated runs."""
     evaluated_runs: list[dict] = []
     dataset_name: str = dataset_path.name
 
-    # Get all dirty data files (default: dirty.csv)
-    dirty_data_files: list[str] = ["dirty.csv"]
+    # Get all dirty data files (default: dirty.csv or dirty.parquet)
+    dirty_data_files: list[str] = [
+        "dirty.csv" if (dataset_path / "dirty.csv").exists() else "dirty.parquet"
+    ]
     # Check for injected/ over dirty.csv
     injected_path: Path = dataset_path / "injected"
     if injected_path.exists():
@@ -149,9 +152,11 @@ def run_horizon(
             str(Path("injected") / injected_data.name)
             for injected_data in injected_path.glob("*_r*.csv")
         ]
-    elif (dataset_path / "clean.csv").exists():
-        # If injected/ does not exist, take clean.csv
-        dirty_data_files = ["clean.csv"]
+    elif len(list(dataset_path.glob("clean.*"))) > 0:
+        # If injected/ does not exist, take clean.csv or clean.parquet
+        dirty_data_files = [
+            "clean.csv" if (dataset_path / "clean.csv").exists() else "clean.parquet"
+        ]
     else:
         print(
             f"\nNo dirty data file found under {str(dataset_path)}. Skipping benchmarks for dataset {dataset_path.name}."
@@ -176,7 +181,13 @@ def run_horizon(
     # Run Horizon for each error type and rate
     for dirty_data_file in dirty_data_files:
         dirty_data_path: Path = dataset_path / Path(dirty_data_file)
-        total_rows: int = sum(1 for line in open(dirty_data_path, "r").readlines()) - 1
+        # Count number of rows to perform experiment for different numbers of tuples
+        total_rows: int = 0
+        if Path(dirty_data_file).suffix.lower() == ".parquet":
+            pf = pq.ParquetFile(dataset_path / dirty_data_file)
+            total_rows = pf.metadata.num_rows
+        else:
+            total_rows = sum(1 for line in open(dirty_data_path, "r").readlines()) - 1
 
         # Get dataset properties
         error_type: str | None = None
@@ -194,7 +205,7 @@ def run_horizon(
             # Create sub-directory for each dirty data file and number of tuples
             output_sub_dir: Path = (
                 output_path / dirty_data_path.stem / str(n_tuples)
-                if dirty_data_file != "dirty.csv" and dirty_data_file != "clean.csv"
+                if "injected" in dirty_data_file
                 else output_path / str(n_tuples)
             )
             output_sub_dir.mkdir(parents=True, exist_ok=True)
@@ -246,7 +257,9 @@ def run_horizon(
             # Compute evaluation
             print(f"Evaluating {dataset_name} with dirty data {dirty_data_file}...")
             evaluation: dict = eval_run(
-                dataset_path / "clean.csv",
+                dataset_path / "clean.csv"
+                if (dataset_path / "clean.csv").exists()
+                else dataset_path / "clean.parquet",
                 dirty_data_path,
                 output_sub_dir / f"{dataset_name}_cleaned_data.csv",
                 output_sub_dir / f"{dataset_name}_statistics.json",
@@ -448,7 +461,7 @@ def main(
         print(f"\nStarting runs for dataset {i + 1}/{len(datasets)}.\n")
 
         # Run Horizon
-        evaluation: list[dict] = run_horizon(
+        evaluation: list[dict] = run_horizon_benchmark(
             horizon_path, dataset_path, dataset_output_dir, results_file
         )
         # Remove dataset output directory if benchmark failed
