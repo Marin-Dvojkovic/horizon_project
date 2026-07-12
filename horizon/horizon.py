@@ -12,7 +12,7 @@ from fds.fd_pattern import FDPattern
 from fds.pattern_expression import PatternExpression
 from fds.set_of_fds import SetOfFDs
 from static_fd_analysis import get_ordered_fds
-from utils.loaders import lazy_load_table, load_fds
+from utils.loaders import iter_table_batches, load_fds
 from utils.logging_config import get_logger, setup_logging
 
 # Setup logging
@@ -99,6 +99,19 @@ def repair_tuple(
         logger.debug(
             f"Tuple {t}: Applied existing pattern repair for {fd} (LHS={lval} -> RHS={rval})"
         )
+    elif fd_pattern_graph.is_source(fd.lhs) and not fd_pattern_graph.has_node(
+        fd.lhs, lval
+    ):
+        # Singleton pattern for a source LHS value: dropped from the graph
+        # (see FDPatternGraph._build_graph). A value seen once has one edge and
+        # no repair choice, so its clean value is its current value -> pass it
+        # through. rval already holds columns[fd.rhs][t].
+        pattern: FDPattern = FDPattern(fd, lval, rval)
+        p_exp.add_fd_pattern(pattern)
+        repair_table[fd][lval] = rval
+        logger.debug(
+            f"Tuple {t}: Passed through dropped-singleton bound value for {fd} (LHS={lval} -> RHS={rval})"
+        )
     else:
         # Choose best edge from FD pattern graph
         rhs, rval = fd_pattern_graph.choose_best_next_edge(fd.lhs, lval, fd.rhs)
@@ -119,7 +132,7 @@ def repair_dirty_data(
     ordered_fds: list[list[FunctionalDependency]],
     fd_pattern_graph: FDPatternGraph,
     n_rows: int | None = None,
-    collect_pattern_expressions: bool = True,
+    collect_pattern_expressions: bool = False,
 ) -> tuple[list[PatternExpression], float]:
     """Repairs data under the given dirty data path, based on the given order and FD Pattern graph.
     If n_rows is given, only repairs the first n_rows tuples.
@@ -132,52 +145,72 @@ def repair_dirty_data(
         fd: {} for fds in ordered_fds for fd in fds
     }
 
-    # Load dirty data as lazy frame
-    logger.info("Loading dirty data...")
-    dirty_data_lf: pl.LazyFrame = lazy_load_table(dirty_data_path, n_rows=n_rows)
-    n_tuples: int = dirty_data_lf.select(pl.len()).collect().item()
-    logger.info(
-        f"Loaded dirty data with {n_tuples} tuples and {len(dirty_data_lf.collect_schema())} columns"
+    # Only FD-touched columns are read/mutated by the repair; convert just those
+    # to Python lists per batch. Untouched columns ride along as compact Arrow
+    # (~3-4x smaller than Python str lists) and are stitched back in at write time.
+    fd_columns: list[str] = list(
+        {
+            col
+            for fds in ordered_fds
+            for fd in fds
+            if not isinstance(fd.lhs, tuple)
+            for col in (fd.lhs, fd.rhs)
+        }
     )
 
-    # Create empty cleaned lazy frame with same schema as dirty data
-    cleaned_lf: pl.LazyFrame = dirty_data_lf.clear()
-
+    logger.info("Loading dirty data...")
     logger.info("Starting tuple repair process...")
     start: float = time.time()
 
     # Total tuple index i
     i: int = 0
-    # Iterate over batches
-    for df in dirty_data_lf.collect_batches(maintain_order=True, engine="streaming"):
-        batch_size: int = len(df)
-        # Convert each batch into a columns dict
-        # Per-cell df[t, col] reads on a Polars data frame and especially
-        # df[t, col] = val writes rebuild whole Arrow columns (O(n) each),
-        # making the loop O(n^2). dict-of-lists makes them O(1).
-        columns: dict[str, list[str]] = df.to_dict(as_series=False)
+    # Stream each repaired batch straight to disk. Holding only the current batch
+    # caps output memory at O(batch); the previous pl.concat into a growing
+    # LazyFrame kept the entire cleaned dataset resident until the final sink.
+    # iter_table_batches reads the input with memory bounded by block size (not
+    # file size), so the input is never materialised; the row total is therefore
+    # not known up front, and progress is logged by absolute count.
+    with open(cleaned_data_output_path, "wb") as cleaned_file:
+        first_batch: bool = True
+        # Iterate over batches
+        for df in iter_table_batches(dirty_data_path, n_rows=n_rows):
+            batch_size: int = len(df)
+            # Convert the FD columns of the batch into a columns dict.
+            # Per-cell df[t, col] reads on a Polars data frame and especially
+            # df[t, col] = val writes rebuild whole Arrow columns (O(n) each),
+            # making the loop O(n^2). dict-of-lists makes them O(1).
+            columns: dict[str, list[str]] = df.select(fd_columns).to_dict(
+                as_series=False
+            )
 
-        # Iterate over tuples in batch and compute pattern expression for each
-        for t in range(batch_size):
-            p_exp: PatternExpression = PatternExpression(i)
-            for j in range(len(ordered_fds)):
-                for fd in ordered_fds[j]:
-                    # TODO: Support multiple attributes on LHS
-                    if isinstance(fd.lhs, tuple):
-                        continue
-                    repair_tuple(columns, t, fd, repair_table, p_exp, fd_pattern_graph)
-            i += 1
+            # Iterate over tuples in batch and compute pattern expression for each
+            for t in range(batch_size):
+                p_exp: PatternExpression = PatternExpression(i)
+                for j in range(len(ordered_fds)):
+                    for fd in ordered_fds[j]:
+                        # TODO: Support multiple attributes on LHS
+                        if isinstance(fd.lhs, tuple):
+                            continue
+                        repair_tuple(
+                            columns, t, fd, repair_table, p_exp, fd_pattern_graph
+                        )
+                i += 1
 
-            # Each tuple's PatternExpression is needed only while repairing that tuple
-            # Retaining all of them (for the lineage output) costs O(n_tuples) objects
-            if collect_pattern_expressions:
-                pattern_expressions.append(p_exp)
+                # Each tuple's PatternExpression is needed only while repairing that tuple
+                # Retaining all of them (for the lineage output) costs O(n_tuples) objects
+                if collect_pattern_expressions:
+                    pattern_expressions.append(p_exp)
 
-            if (i) % max(1, n_tuples // 10) == 0:
-                logger.info(f"Repaired {i}/{n_tuples} tuples")
+                if i % 1_000_000 == 0:
+                    logger.info(f"Repaired {i} tuples")
 
-        # Append cleaned batch to final cleaned lazy frame
-        cleaned_lf = pl.concat([cleaned_lf, pl.LazyFrame(columns)])
+            # Stitch repaired FD columns back into the batch (original column
+            # order preserved) and write; header only on the first batch.
+            repaired: pl.DataFrame = df.with_columns(
+                [pl.Series(name, values) for name, values in columns.items()]
+            )
+            repaired.write_csv(cleaned_file, include_header=first_batch)
+            first_batch = False
 
     end: float = time.time()
     elapsed_time: float = end - start
@@ -188,8 +221,6 @@ def repair_dirty_data(
     # Clear the FD pattern graph to save memory
     fd_pattern_graph.clear()
 
-    # Save cleaned data
-    cleaned_lf.sink_csv(cleaned_data_output_path)
     logger.info(f"Cleaned data saved to {cleaned_data_output_path}")
 
     return pattern_expressions, elapsed_time
@@ -202,7 +233,7 @@ def run_horizon(
     output_dir: Path,
     n_rows: int | None = None,
     enable_plotting: bool = False,
-    collect_pattern_expressions: bool = True,
+    collect_pattern_expressions: bool = False,
 ) -> None:
     # Create output directory
     if not output_dir.exists:
