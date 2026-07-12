@@ -1,6 +1,7 @@
 import re
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Iterator
 
 import polars as pl
 from fds.fd import FunctionalDependency
@@ -243,3 +244,81 @@ def lazy_load_table(
             raise ValueError(f"columns not found: {missing}")
         lf = lf.select(wanted)
     return lf
+
+
+def iter_table_batches(
+    source: Path,
+    columns: list[str] | None = None,
+    n_rows: int | None = None,
+    block_bytes: int = 8 * 1024 * 1024,
+) -> Iterator[pl.DataFrame]:
+    """Yield a table in row batches using memory BOUNDED by block size, not file size.
+
+    Additive, non-breaking companion to lazy_load_table for streaming a whole
+    table once (e.g. the repair loop). For CSV it reads via pyarrow's block-based
+    reader, whose peak memory is ~O(block_bytes) regardless of file size -- unlike
+    scan_csv().collect_batches(), which under the polars streaming engine
+    materialises ~a full copy of the CSV. Columns are read as Utf8 and lowercased,
+    matching lazy_load_table. Pass `columns` (any casing) to read only a subset --
+    projection is pushed into the reader so unselected columns are never parsed;
+    missing names raise ValueError. Non-CSV sources fall back to the existing lazy
+    streaming path, so their behaviour is unchanged. Stops after n_rows rows.
+    """
+    if not source.exists():
+        logger.error(f"File {str(source)} does not exist")
+        raise ValueError(f"File {str(source)} does not exist")
+
+    if Path(source).suffix.lower() != ".csv":
+        # Non-CSV: reuse the existing lazy reader unchanged.
+        lf: pl.LazyFrame = lazy_load_table(source, columns=columns, n_rows=n_rows)
+        yield from lf.collect_batches(maintain_order=True, engine="streaming")
+        return
+
+    # Local imports: pyarrow is only needed on this CSV path.
+    import csv as _csv
+
+    import pyarrow as pa
+    import pyarrow.csv as pa_csv
+
+    # Read the header once so every column is forced to Utf8 (matching _scan_csv,
+    # which uses infer_schema_length=0) and names are lowercased like the lazy path.
+    with open(source, "r", encoding="utf-8", newline="") as header_file:
+        header: list[str] = next(_csv.reader(header_file))
+
+    # Project to `columns` if requested: pyarrow parses only the included columns.
+    include_columns: list[str] | None = None
+    kept: list[str] = header
+    if columns is not None:
+        wanted: set[str] = {c.strip().lower() for c in columns}
+        kept = [name for name in header if name.strip().lower() in wanted]
+        missing: set[str] = wanted - {name.strip().lower() for name in kept}
+        if missing:
+            raise ValueError(f"columns not found: {sorted(missing)}")
+        include_columns = kept
+    rename: dict[str, str] = {name: name.strip().lower() for name in kept}
+
+    reader = pa_csv.open_csv(
+        str(source),
+        read_options=pa_csv.ReadOptions(block_size=block_bytes),
+        convert_options=pa_csv.ConvertOptions(
+            column_types={name: pa.string() for name in kept},
+            include_columns=include_columns,
+            # Match polars scan_csv null handling: an empty field is null (which
+            # the pipeline stringifies to "None"), but ONLY the empty string --
+            # pyarrow's default also nulls "NA"/"null"/etc., which polars keeps as
+            # literal strings. Without this, empties come through as "" and diverge.
+            strings_can_be_null=True,
+            null_values=[""],
+        ),
+    )
+
+    remaining: int | None = n_rows
+    for record_batch in reader:
+        if remaining is not None and remaining <= 0:
+            break
+        df: pl.DataFrame = pl.from_arrow(record_batch).rename(rename)
+        if remaining is not None:
+            if len(df) > remaining:
+                df = df.head(remaining)
+            remaining -= len(df)
+        yield df

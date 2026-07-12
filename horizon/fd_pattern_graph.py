@@ -12,10 +12,9 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import networkx as nx
-import polars as pl
 from fds.fd import FunctionalDependency
 from fds.set_of_fds import SetOfFDs
-from utils.loaders import lazy_load_table
+from utils.loaders import iter_table_batches
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -55,13 +54,24 @@ class FDPatternGraph:
         logger.debug(f"Loading data from {str(data_path)}")
 
         fd_columns: set[str] = set_of_fds.unique_attributes
-        data: pl.LazyFrame = lazy_load_table(data_path, list(fd_columns))
+
+        # "Source" attributes: those that never appear as an FD RHS. Their nodes
+        # are never a to_node of ANY edge (forward or back), so dropping their
+        # singleton patterns changes no other edge's quality (see _build_graph).
+        # This is STRICTER than set_of_fds.bound_attributes: for a cyclic FD
+        # (Prop. 1, §4.2) the static analysis designates a bound attribute that
+        # may still be an RHS elsewhere (e.g. `agency` in the agency <-> agency
+        # name cycle) -- dropping those WOULD alter quality, so they are excluded.
+        rhs_attributes: set[str] = {fd.rhs for fd in set_of_fds}
+        self._source_attributes: set[str] = (
+            set_of_fds.unique_attributes - rhs_attributes
+        )
 
         start: float = time.time()
 
         # Build the graph and compute qualities on the fly
         logger.info("Building FDPatternGraph...")
-        self.graph = self._build_graph(data, set_of_fds)
+        self.graph = self._build_graph(data_path, set_of_fds)
 
         end: float = time.time()
         self._build_time: float = end - start
@@ -114,7 +124,7 @@ class FDPatternGraph:
         col_name, _, value = node_id.partition("__")
         return col_name, value
 
-    def _build_graph(self, data: pl.LazyFrame, set_of_fds: SetOfFDs) -> nx.DiGraph:
+    def _build_graph(self, data_path: Path, set_of_fds: SetOfFDs) -> nx.DiGraph:
         """
         Build the graph with nodes for unique (column, value) pairs
         and edges based on functional dependencies.
@@ -132,91 +142,132 @@ class FDPatternGraph:
         )
         ordered_set_of_fds.reverse()
 
-        n_tuples: int = data.select(pl.len()).collect().item()
-        skipped_edges: list[tuple] = []
-        # Add nodes and edges for each FD and value combination
-        # Compute edge quality on the fly
-        for fd in ordered_set_of_fds:
+        single_lhs_fds: list[FunctionalDependency] = [
             # TODO: Support multiple attributes on LHS
-            if isinstance(fd.lhs, tuple):
-                continue
+            fd
+            for fd in ordered_set_of_fds
+            if not isinstance(fd.lhs, tuple)
+        ]
 
-            # Compute support with a per-FD group-by via a group's row count.
-            # maintain_order=True is load-bearing, not cosmetic: choose_best_next_edge
-            # breaks quality ties by first-inserted edge, and the old Counter inserted
-            # edges in first-occurrence (row) order. Hash order would change tie-breaks
-            # and thus the repairs.
-            pair_counts: pl.LazyFrame = data.group_by(
-                fd.lhs, fd.rhs, maintain_order=True
-            ).len()
+        # Phase 1: one bounded streaming pass over the input to accumulate, per FD,
+        # the count of each distinct (LHS, RHS) pair (the pattern support). Blocks
+        # are read with memory bounded by block size (iter_table_batches); each
+        # block's per-FD group-by counts are folded into a running dict. This
+        # replaces a per-FD group_by over the whole frame, which materialised ~the
+        # input file. maintain_order=True on the per-block group-by plus insertion
+        # into an order-preserving dict keeps global first-occurrence (row) order:
+        # blocks arrive in file order, so a pair's dict position is fixed at its
+        # first appearance anywhere. That order is load-bearing --- choose_best_next
+        # _edge breaks quality ties by first-inserted edge (see
+        # project_fd_graph_tiebreak_order).
+        pair_counts: dict[FunctionalDependency, dict[tuple, int]] = {
+            fd: {} for fd in single_lhs_fds
+        }
+        n_tuples: int = 0
+        # Read only the FD columns (projection pushed into the reader).
+        for block in iter_table_batches(
+            data_path, columns=list(set_of_fds.unique_attributes)
+        ):
+            n_tuples += block.height
+            for fd, counts in pair_counts.items():
+                for lval, rval, count in (
+                    block.group_by(fd.lhs, fd.rhs, maintain_order=True)
+                    .len()
+                    .iter_rows()
+                ):
+                    key: tuple = (lval, rval)
+                    counts[key] = counts.get(key, 0) + count
+
+        # Phase 2: add nodes and edges for each FD (in reverse order) from the
+        # accumulated counts, computing edge quality on the fly.
+        for fd in single_lhs_fds:
+            counts = pair_counts[fd]
+
+            # Drop singleton patterns for SOURCE LHS columns (fix C, scoped).
+            # A source attribute never appears as an RHS, so its nodes are never
+            # a to_node: dropping some changes no other edge's quality. A LHS
+            # value occurring once has a single outgoing edge and no repair
+            # choice, so Horizon never changes it -> the repair passes it through
+            # unchanged (horizon.repair_tuple). This collapses the two near-unique
+            # source columns (bbl, incident address) that dominate the graph.
+            # Filter on the LHS value's TOTAL count, not the (lhs, rhs)-pair
+            # count: a real violation (same LHS -> two RHS) is two pairs of
+            # count 1 whose LHS total is 2, and must be kept. Iterating the
+            # insertion-ordered dict keeps first-occurrence order; a NULL LHS
+            # groups under a single (None, ...) key, exactly like the un-dropped
+            # graph (whereas is_in/semi-join would silently drop null rows).
+            if fd.lhs in self._source_attributes:
+                lhs_totals: dict = {}
+                for (lval, _rval), count in counts.items():
+                    lhs_totals[lval] = lhs_totals.get(lval, 0) + count
+                pairs: list[tuple] = [
+                    (lval, rval, count)
+                    for (lval, rval), count in counts.items()
+                    if lhs_totals[lval] >= 2
+                ]
+            else:
+                pairs = [
+                    (lval, rval, count) for (lval, rval), count in counts.items()
+                ]
 
             # If FD is cyclic, all its edges are back-edges
             # Add all back-edges for this FD at once, but skip quality computation
             if fd.cyclic:
                 back_edges: list[tuple] = [
                     (
-                        self._cell_node_id(fd.lhs, row[fd.lhs]),
-                        self._cell_node_id(fd.rhs, row[fd.rhs]),
+                        self._cell_node_id(fd.lhs, lval),
+                        self._cell_node_id(fd.rhs, rval),
                         {
-                            "support": row["len"] / n_tuples,
-                            "quality": row["len"] / n_tuples,
+                            "support": count / n_tuples,
+                            "quality": count / n_tuples,
                             "back_edge": fd.cyclic,
                             "sum_support": 0,
                             "n_reachable": 0,
                         },
                     )
-                    for df in pair_counts.collect_batches(
-                        maintain_order=True, engine="streaming"
-                    )
-                    for row in df.iter_rows(named=True)
+                    for lval, rval, count in pairs
                 ]
-                skipped_edges.extend(back_edges)
                 G.add_edges_from(back_edges)
                 continue
 
             # Compute quality for each FD edge (non back-edges)
-            for df in pair_counts.collect_batches(
-                maintain_order=True, engine="streaming"
-            ):
-                for row in df.iter_rows(named=True):
-                    from_node = self._cell_node_id(fd.lhs, row[fd.lhs])
-                    to_node = self._cell_node_id(fd.rhs, row[fd.rhs])
-                    G.add_nodes_from([from_node, to_node])
+            for lval, rval, count in pairs:
+                from_node = self._cell_node_id(fd.lhs, lval)
+                to_node = self._cell_node_id(fd.rhs, rval)
+                G.add_nodes_from([from_node, to_node])
 
-                    support: float = row["len"] / n_tuples
+                support: float = count / n_tuples
 
-                    # Sum over direct neighbor's summed support to get reachable support
-                    reachable_support: int = sum(
-                        [
-                            G[to_node][direct_neighbor]["sum_support"]
-                            for direct_neighbor in G.successors(to_node)
-                            if not G[to_node][direct_neighbor]["back_edge"]
-                        ]
-                    )
-                    # Store support sum and number of reachable FDs for each edge
-                    sum_support: float = support + reachable_support
-                    n_reachable: int = sum(
-                        [
-                            G[to_node][direct_neighbor]["n_reachable"] + 1
-                            for direct_neighbor in G.successors(to_node)
-                            if not G[to_node][direct_neighbor]["back_edge"]
-                        ]
-                    )
+                # Sum over direct neighbor's summed support to get reachable support
+                reachable_support: int = sum(
+                    [
+                        G[to_node][direct_neighbor]["sum_support"]
+                        for direct_neighbor in G.successors(to_node)
+                        if not G[to_node][direct_neighbor]["back_edge"]
+                    ]
+                )
+                # Store support sum and number of reachable FDs for each edge
+                sum_support: float = support + reachable_support
+                n_reachable: int = sum(
+                    [
+                        G[to_node][direct_neighbor]["n_reachable"] + 1
+                        for direct_neighbor in G.successors(to_node)
+                        if not G[to_node][direct_neighbor]["back_edge"]
+                    ]
+                )
 
-                    # Add edge and calculate quality via sum_support / (n_reachable + 1)
-                    G.add_edge(
-                        from_node,
-                        to_node,
-                        support=support,
-                        quality=sum_support / (n_reachable + 1),
-                        back_edge=fd.cyclic,
-                        sum_support=sum_support,
-                        n_reachable=n_reachable,
-                    )
+                # Add edge and calculate quality via sum_support / (n_reachable + 1)
+                G.add_edge(
+                    from_node,
+                    to_node,
+                    support=support,
+                    quality=sum_support / (n_reachable + 1),
+                    back_edge=fd.cyclic,
+                    sum_support=sum_support,
+                    n_reachable=n_reachable,
+                )
 
-        # Compute quality of skipped back-edges
-        # for from_node, to_node, edge_data in skipped_edges:
-        # TODO: Compute quality for back-edges
+        # TODO: Compute quality for back-edges (currently added with support-only quality)
 
         # quality is now final; the repair only ever reads `quality` (see
         # choose_best_next_edge / get_edge_quality). Drop the per-edge scratch
@@ -253,6 +304,18 @@ class FDPatternGraph:
         """Get all stored information about a node."""
         col_name, value = self._parse_node_id(node_id)
         return {"column": col_name, "value": value}
+
+    def is_source(self, col_name: str) -> bool:
+        """True if col_name never appears as an FD RHS (a source column).
+
+        Only source columns have their singleton patterns dropped from the
+        graph, so only they may need a repair pass-through (see _build_graph).
+        """
+        return col_name in self._source_attributes
+
+    def has_node(self, col_name: str, value: str) -> bool:
+        """True if a (column, value) node exists in the graph."""
+        return self.graph.has_node(self._cell_node_id(col_name, value))
 
     def choose_best_next_edge(self, lhs: str, lval: str, rhs: str) -> tuple[str, str]:
         """Choose best next edge given a LHS attribute and value, returns RHS attribute and value with the highest quality."""
