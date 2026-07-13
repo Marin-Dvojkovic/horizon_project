@@ -1,0 +1,31 @@
+n_fds,round,n_attrs,fds,order_secs,graph_secs,repair_secs,total_secs
+1,1,2,agency->agency name,0.001,0.052,4.886,4.939
+1,2,2,council district->borough,0.0,0.042,10.526,10.568
+1,3,2,bbl->police precinct,0.001,4.685,6.389,11.074
+2,1,4,council district->borough; bbl->community board,0.0,1.387,8.805,10.192
+2,2,4,police precinct->borough; incident zip->city,0.001,0.145,7.565,7.71
+2,3,4,community board->borough; bbl->police precinct,0.0,1.29,8.698,9.988
+3,1,5,community board->borough; council district->borough; incident address->street name,0.001,5.93,13.198,19.129
+3,2,6,agency name->agency; council district->borough; bbl->police precinct,0.001,1.256,11.885,13.142
+3,3,6,agency name->agency; incident zip->city; bbl->community board,0.001,1.624,11.845,13.47
+4,1,6,police precinct->borough; bbl->community board; bbl->police precinct; incident address->street name,0.001,4.165,17.961,22.127
+4,2,7,agency->agency name; council district->borough; incident zip->borough; bbl->police precinct,0.001,1.603,15.193,16.797
+4,3,6,agency->agency name; agency name->agency; incident zip->city; bbl->police precinct,0.001,1.462,14.814,16.276
+5,1,9,agency name->agency; police precinct->borough; council district->borough; incident zip->city; bbl->community board,0.001,1.491,21.852,23.345
+5,2,7,community board->borough; police precinct->borough; council district->borough; incident zip->borough; incident address->street name,0.001,3.341,20.422,23.764
+5,3,7,agency name->agency; community board->borough; council district->borough; bbl->community board; bbl->police precinct,0.001,2.589,19.853,22.443
+6,1,8,police precinct->borough; council district->borough; incident zip->city; incident zip->borough; bbl->police precinct; incident address->street name,0.001,3.344,23.561,26.905
+6,2,9,agency->agency name; police precinct->borough; council district->borough; bbl->community board; bbl->police precinct; incident address->street name,0.001,4.34,25.198,29.539
+6,3,9,agency name->agency; police precinct->borough; council district->borough; incident zip->city; incident zip->borough; incident address->street name,0.001,1.909,22.786,24.696
+7,1,8,agency->agency name; agency name->agency; community board->borough; council district->borough; incident zip->city; incident zip->borough; bbl->community board,0.001,1.851,25.13,26.981
+7,2,9,community board->borough; police precinct->borough; council district->borough; incident zip->city; bbl->community board; bbl->police precinct; incident address->street name,0.001,4.384,28.484,32.869
+7,3,10,agency->agency name; community board->borough; council district->borough; incident zip->city; incident zip->borough; bbl->community board; incident address->street name,0.001,3.253,27.301,30.555
+8,1,11,agency->agency name; community board->borough; police precinct->borough; council district->borough; incident zip->city; bbl->community board; bbl->police precinct; incident address->street name,0.001,4.338,32.459,36.798
+8,2,9,agency->agency name; agency name->agency; police precinct->borough; council district->borough; incident zip->city; incident zip->borough; bbl->community board; bbl->police precinct,0.001,2.652,30.432,33.086
+8,3,11,agency->agency name; agency name->agency; council district->borough; incident zip->city; incident zip->borough; bbl->community board; bbl->police precinct; incident address->street name,0.001,3.818,32.653,36.471
+9,1,11,agency->agency name; agency name->agency; community board->borough; police precinct->borough; council district->borough; incident zip->city; incident zip->borough; bbl->police precinct; incident address->street name,0.002,3.331,34.808,38.141
+9,2,11,agency->agency name; agency name->agency; police precinct->borough; council district->borough; incident zip->city; incident zip->borough; bbl->community board; bbl->police precinct; incident address->street name,0.001,4.184,36.389,40.575
+9,3,10,agency->agency name; agency name->agency; community board->borough; police precinct->borough; incident zip->city; incident zip->borough; bbl->community board; bbl->police precinct; incident address->street name,0.001,4.449,35.987,40.438
+10,1,11,agency->agency name; agency name->agency; community board->borough; police precinct->borough; council district->borough; incident zip->city; incident zip->borough; bbl->community board; bbl->police precinct; incident address->street name,0.001,4.431,39.941,44.373
+10,2,11,agency->agency name; agency name->agency; community board->borough; police precinct->borough; council district->borough; incident zip->city; incident zip->borough; bbl->community board; bbl->police precinct; incident address->street name,0.001,4.242,39.897,44.14
+10,3,11,agency->agency name; agency name->agency; community board->borough; police precinct->borough; council district->borough; incident zip->city; incident zip->borough; bbl->community board; bbl->police precinct; incident address->street name,0.001,4.452,40.289,44.742
