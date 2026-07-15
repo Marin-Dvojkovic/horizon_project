@@ -203,7 +203,7 @@ class FDPatternGraph:
                 # If pattern appears only once, insert directly into repair table
                 singleton_pattern: bool = count == 1 and lhs_totals[lval] < 2
                 if singleton_pattern:
-                    fd_repairs[lval] = rval
+                    fd_repairs[str(lval)] = str(rval)
                     # Skip edge creation for source attributes (never appears as a RHS)
                     # Dropping this edge changes no other edge's quality
                     if fd.lhs in set_of_fds.source_attributes:
