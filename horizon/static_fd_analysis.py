@@ -197,7 +197,12 @@ class FDGraph:
 
         # Bound attributes = vertices with in-degree 0
         # If vertex is a SCC, pick the first (arbitrary order)
+        # Source attributes (never appear as an FD RHS) = vertices with in-degree 0
+        # Ignore SCCs for source attributes (stricter)
         self._set_of_fds.bound_attributes.update([v["name"][0] for v in v_queue])
+        self._set_of_fds.source_attributes.update(
+            [v["name"][0] for v in v_queue if len(v["name"]) < 2]
+        )
         logger.info(
             f"Identified {len(self._set_of_fds.bound_attributes)} bound attributes: {self._set_of_fds.bound_attributes}"
         )
@@ -244,18 +249,22 @@ class FDGraph:
 
         return ordered_fds
 
-    def order_fds(self) -> list[list[FunctionalDependency]]:
+    def order_fds(self) -> list[FunctionalDependency]:
         """Orders each independent sub-component of the FD graph."""
         # Perform topological sorting of each sub-component of SCCG
-        order_counter: int = 0
-        ordered_fds: list[list[FunctionalDependency]] = [
-            self._get_topological_sorting(sub_g, order_counter)
-            for sub_g in self._scc_g.decompose(mode="weak")
-        ]
+        ordered_fds: list[FunctionalDependency] = []
 
-        if sum([len(order) for order in ordered_fds]) != len(self._set_of_fds):
+        order_counter: int = 0
+        for sub_g in self._scc_g.decompose(mode="weak"):
+            ordered_fds.extend(self._get_topological_sorting(sub_g, order_counter))
+            order_counter += 1
+
+        if len(ordered_fds) != len(self._set_of_fds):
             logger.error(
-                f"Ordered FDs have length {sum([len(order) for order in ordered_fds])} while there are {len(self._set_of_fds)} FDs."
+                f"Ordered FDs have length {len(ordered_fds)} while there are {len(self._set_of_fds)} FDs."
+            )
+            raise ValueError(
+                f"Ordered FDs have length {len(ordered_fds)} while there are {len(self._set_of_fds)} FDs."
             )
 
         return ordered_fds
@@ -403,7 +412,7 @@ def get_ordered_fds(
     dataset_name: str = "",
     output_dir: Path = Path("output"),
     enable_plotting: bool = True,
-) -> tuple[list[list[FunctionalDependency]], float]:
+) -> tuple[list[FunctionalDependency], float]:
     logger.info("Computing ordered FDs for pipeline execution")
 
     start: float = time.time()
@@ -413,13 +422,9 @@ def get_ordered_fds(
 
     # Perform topological sorting on SCCG and get order of functional dependencies
     logger.info("Performing topological sorting...")
-    ordered_fds: list[list[FunctionalDependency]] = fd_graph.order_fds()
+    ordered_fds: list[FunctionalDependency] = fd_graph.order_fds()
 
-    logger.info(f"Computed traversal order with {len(ordered_fds)} groups")
-    logger.debug(
-        [f"Group {i}: {len(fd_group)} FDs" for i, fd_group in enumerate(ordered_fds)]
-    )
-    logger.debug(f"Order: {ordered_fds}")
+    logger.info(f"Computed traversal order: {ordered_fds}")
 
     # Mark cyclic FDs (used later to skip back-edges in FD pattern graph quality computation)
     non_cyclic_fds: set = set(

@@ -15,10 +15,10 @@ OUTPUT_DIR: Path = Path(__file__).parent.resolve() / Path("output")
 set_of_fds: dict[str, SetOfFDs] = {
     "paper_example": SetOfFDs(
         [
-            FunctionalDependency("provider_area_id", "service_area"),
-            FunctionalDependency("provider_address", "provider_area_id"),
-            FunctionalDependency("provider_id", "provider_address"),
-            FunctionalDependency("service_area", "provider_area_id"),
+            FunctionalDependency("provider_area_id", "service_area", 0),
+            FunctionalDependency("provider_address", "provider_area_id", 1),
+            FunctionalDependency("provider_id", "provider_address", 2),
+            FunctionalDependency("service_area", "provider_area_id", 3),
         ]
     )
 }

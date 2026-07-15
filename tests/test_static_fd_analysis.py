@@ -21,14 +21,12 @@ set_of_fds: dict[str, SetOfFDs] = {
     )
 }
 
-correct_ordered_fds: dict[str, list[list[FunctionalDependency]]] = {
+correct_ordered_fds: dict[str, list[FunctionalDependency]] = {
     "paper_example": [
-        [
-            FunctionalDependency("provider_id", "provider_address"),
-            FunctionalDependency("provider_address", "provider_area_id"),
-            FunctionalDependency("provider_area_id", "service_area"),
-            FunctionalDependency("service_area", "provider_area_id"),
-        ]
+        FunctionalDependency("provider_id", "provider_address"),
+        FunctionalDependency("provider_address", "provider_area_id"),
+        FunctionalDependency("provider_area_id", "service_area"),
+        FunctionalDependency("service_area", "provider_area_id"),
     ]
 }
 
@@ -44,7 +42,7 @@ def static_fd_analysis_test(dataset_name: str) -> None:
     fds: SetOfFDs = set_of_fds[dataset_name]
 
     # Get traversal order
-    ordered_fds: list[list[FunctionalDependency]] = get_ordered_fds(
+    ordered_fds: list[FunctionalDependency] = get_ordered_fds(
         fds, dataset_name, OUTPUT_DIR
     )[0]
 
