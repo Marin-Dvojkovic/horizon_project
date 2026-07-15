@@ -171,7 +171,7 @@ def run_pipeline(
     try:
         cleaned_path: Path = output_dir / f"{ds_name}_cleaned_data.csv"
         pattern_expressions, _ = pipe.repair_dirty_data(
-            dirty_path, cleaned_path, ordered_fds, graph
+            dirty_path, cleaned_path, ordered_fds, graph.repair_table, graph
         )
         cleaned = load_table(cleaned_path)
     finally:

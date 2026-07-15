@@ -233,15 +233,12 @@ def run_horizon(
         dirty_data_path, set_of_fds, dataset_name, output_dir, enable_plotting
     )
 
-    # Get repair table populated by FD pattern graph
-    repair_table: list[dict[str, str]] = fd_pattern_graph.repair_table
-
     # Compute repairs for dirty data
     pattern_expressions, repair_time = repair_dirty_data(
         dirty_data_path,
         output_dir / f"{dataset_name}_cleaned_data.csv",
         ordered_fds,
-        repair_table,
+        fd_pattern_graph.repair_table,
         fd_pattern_graph,
         n_rows,
         collect_pattern_expressions,
