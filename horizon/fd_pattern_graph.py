@@ -30,12 +30,14 @@ class FDPatternGraph:
 
     # Class variable
     graph: nx.DiGraph
+    _repair_table: list[dict[str, str]]
 
     def __init__(
         self,
         data_path: Path,
         set_of_fds: SetOfFDs,
         dataset_name: str = "",
+        pruning: bool = True,
         output_dir: Path = Path("output"),
         enable_plotting: bool = False,
     ) -> None:
@@ -53,25 +55,20 @@ class FDPatternGraph:
         # Load data
         logger.debug(f"Loading data from {str(data_path)}")
 
-        fd_columns: set[str] = set_of_fds.unique_attributes
-
-        # "Source" attributes: those that never appear as an FD RHS. Their nodes
-        # are never a to_node of ANY edge (forward or back), so dropping their
-        # singleton patterns changes no other edge's quality (see _build_graph).
-        # This is STRICTER than set_of_fds.bound_attributes: for a cyclic FD
-        # (Prop. 1, §4.2) the static analysis designates a bound attribute that
-        # may still be an RHS elsewhere (e.g. `agency` in the agency <-> agency
-        # name cycle) -- dropping those WOULD alter quality, so they are excluded.
-        rhs_attributes: set[str] = {fd.rhs for fd in set_of_fds}
-        self._source_attributes: set[str] = (
-            set_of_fds.unique_attributes - rhs_attributes
-        )
+        # Initialize repair table
+        self._repair_table = [dict() for fd in set_of_fds]
 
         start: float = time.time()
 
         # Build the graph and compute qualities on the fly
         logger.info("Building FDPatternGraph...")
         self.graph = self._build_graph(data_path, set_of_fds)
+
+        # Pruning is always true, deactivate only for debugging
+        if pruning:
+            logger.info("Pruning edges of FDPatternGraph...")
+            # Prune unused edges
+            self._prune_edges()
 
         end: float = time.time()
         self._build_time: float = end - start
@@ -84,7 +81,7 @@ class FDPatternGraph:
             # Only plot subgraph with 3 values for each attribute
             sub_g_nodes: list[int] = [
                 node
-                for col_name in fd_columns
+                for col_name in set_of_fds.unique_attributes
                 for node in [
                     n
                     for n in self.graph.nodes()
@@ -100,6 +97,18 @@ class FDPatternGraph:
             )
             plt.savefig(str(output_dir / f"{dataset_name}_fd_pattern_graph.png"))
             plt.clf()
+
+    @property
+    def repair_table(self) -> list[dict[str, str]]:
+        return self._repair_table
+
+    @property
+    def number_of_nodes(self) -> int:
+        return self.graph.number_of_nodes()
+
+    @property
+    def number_of_edges(self) -> int:
+        return self.graph.number_of_edges()
 
     def _cell_node_id(self, col_name: str, value) -> str:
         """
@@ -137,17 +146,13 @@ class FDPatternGraph:
         G: nx.DiGraph = nx.DiGraph()
 
         # Get reverse ordered set of FDs for bottom-up addition of edges
-        ordered_set_of_fds: list[FunctionalDependency] = (
-            set_of_fds.get_ordered_set_of_fds()
-        )
-        ordered_set_of_fds.reverse()
-
-        single_lhs_fds: list[FunctionalDependency] = [
-            # TODO: Support multiple attributes on LHS
-            fd
-            for fd in ordered_set_of_fds
+        # TODO: Support multiple attributes on LHS
+        ordered_set_of_fds: list[tuple[int, FunctionalDependency]] = [
+            (fd.index, fd)
+            for fd in set_of_fds.get_ordered_set_of_fds()
             if not isinstance(fd.lhs, tuple)
         ]
+        ordered_set_of_fds.reverse()
 
         # Phase 1: one bounded streaming pass over the input to accumulate, per FD,
         # the count of each distinct (LHS, RHS) pair (the pattern support). Blocks
@@ -161,7 +166,7 @@ class FDPatternGraph:
         # _edge breaks quality ties by first-inserted edge (see
         # project_fd_graph_tiebreak_order).
         pair_counts: dict[FunctionalDependency, dict[tuple, int]] = {
-            fd: {} for fd in single_lhs_fds
+            fd: {} for _, fd in ordered_set_of_fds
         }
         n_tuples: int = 0
         # Read only the FD columns (projection pushed into the reader).
@@ -180,58 +185,47 @@ class FDPatternGraph:
 
         # Phase 2: add nodes and edges for each FD (in reverse order) from the
         # accumulated counts, computing edge quality on the fly.
-        for fd in single_lhs_fds:
-            counts = pair_counts[fd]
+        for fd_index, fd in ordered_set_of_fds:
+            counts: dict[tuple, int] = pair_counts[fd]
+            fd_repairs: dict[str, str] = self._repair_table[fd_index]
 
-            # Drop singleton patterns for SOURCE LHS columns (fix C, scoped).
-            # A source attribute never appears as an RHS, so its nodes are never
-            # a to_node: dropping some changes no other edge's quality. A LHS
-            # value occurring once has a single outgoing edge and no repair
-            # choice, so Horizon never changes it -> the repair passes it through
-            # unchanged (horizon.repair_tuple). This collapses the two near-unique
-            # source columns (bbl, incident address) that dominate the graph.
-            # Filter on the LHS value's TOTAL count, not the (lhs, rhs)-pair
-            # count: a real violation (same LHS -> two RHS) is two pairs of
-            # count 1 whose LHS total is 2, and must be kept. Iterating the
-            # insertion-ordered dict keeps first-occurrence order; a NULL LHS
-            # groups under a single (None, ...) key, exactly like the un-dropped
-            # graph (whereas is_in/semi-join would silently drop null rows).
-            if fd.lhs in self._source_attributes:
-                lhs_totals: dict = {}
-                for (lval, _rval), count in counts.items():
-                    lhs_totals[lval] = lhs_totals.get(lval, 0) + count
-                pairs: list[tuple] = [
-                    (lval, rval, count)
-                    for (lval, rval), count in counts.items()
-                    if lhs_totals[lval] >= 2
-                ]
-            else:
-                pairs = [
-                    (lval, rval, count) for (lval, rval), count in counts.items()
-                ]
+            # Get total LHS count: a real violation (same LHS -> two RHS) is two pairs of
+            # count 1 whose LHS total is 2, and must be kept
+            lhs_totals: dict = {}
+            for (lval, _rval), count in counts.items():
+                lhs_totals[lval] = lhs_totals.get(lval, 0) + count
 
-            # If FD is cyclic, all its edges are back-edges
-            # Add all back-edges for this FD at once, but skip quality computation
-            if fd.cyclic:
-                back_edges: list[tuple] = [
-                    (
-                        self._cell_node_id(fd.lhs, lval),
-                        self._cell_node_id(fd.rhs, rval),
-                        {
-                            "support": count / n_tuples,
-                            "quality": count / n_tuples,
-                            "back_edge": fd.cyclic,
-                            "sum_support": 0,
-                            "n_reachable": 0,
-                        },
-                    )
-                    for lval, rval, count in pairs
-                ]
-                G.add_edges_from(back_edges)
-                continue
+            # Check singleton FD patterns (count == 1 and LHS total < 2) during loop,
+            # then directly insert into the repair table and mark for deletion
 
             # Compute quality for each FD edge (non back-edges)
-            for lval, rval, count in pairs:
+            for (lval, rval), count in counts.items():
+                # If pattern appears only once, insert directly into repair table
+                singleton_pattern: bool = count == 1 and lhs_totals[lval] < 2
+                if singleton_pattern:
+                    fd_repairs[str(lval)] = str(rval)
+                    # Skip edge creation for source attributes (never appears as a RHS)
+                    # Dropping this edge changes no other edge's quality
+                    if fd.lhs in set_of_fds.source_attributes:
+                        continue
+
+                # If FD is cyclic, all its edges are back-edges, therefore skip quality computation
+                if fd.cyclic:
+                    # Back-edges currently have support-only quality
+                    G.add_edge(
+                        self._cell_node_id(fd.lhs, lval),
+                        self._cell_node_id(fd.rhs, rval),
+                        support=count / n_tuples,
+                        quality=count / n_tuples,
+                        back_edge=fd.cyclic,
+                        sum_support=0,
+                        n_reachable=0,
+                        mark_delete=singleton_pattern,
+                    )
+                    # Nodes are added automatically
+                    continue
+
+                # Add nodes to the graph, to compute quality
                 from_node = self._cell_node_id(fd.lhs, lval)
                 to_node = self._cell_node_id(fd.rhs, rval)
                 G.add_nodes_from([from_node, to_node])
@@ -265,24 +259,39 @@ class FDPatternGraph:
                     back_edge=fd.cyclic,
                     sum_support=sum_support,
                     n_reachable=n_reachable,
+                    mark_delete=singleton_pattern,
                 )
 
         # TODO: Compute quality for back-edges (currently added with support-only quality)
 
+        logger.debug(
+            f"Initial graph construction completed: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges"
+        )
+
+        return G
+
+    def _prune_edges(self) -> None:
         # quality is now final; the repair only ever reads `quality` (see
         # choose_best_next_edge / get_edge_quality). Drop the per-edge scratch
         # attributes (support, back_edge, order, sum_support, n_reachable), keeping
         # only quality, so they aren't held on every edge for the whole repair.
-        for _, _, edge_data in G.edges(data=True):
+        edges_to_remove: list[tuple] = []
+        for u, v, edge_data in self.graph.edges(data=True):
+            # Delete all marked edges
+            if edge_data["mark_delete"]:
+                edges_to_remove.append((u, v))
+                continue
             quality: float = edge_data["quality"]
             # clear() + reassign actually shrinks the dict; pop() alone would not.
             edge_data.clear()
             edge_data["quality"] = quality
 
+        # Prune all marked edges (already have an entry in the repair table)
+        self.graph.remove_edges_from(edges_to_remove)
+
         logger.debug(
-            f"Graph construction completed: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges"
+            f"Pruned {len(edges_to_remove)} edges. Graph now has {self.graph.number_of_nodes()} nodes, {self.graph.number_of_edges()} edges"
         )
-        return G
 
     def get_edge_quality(self, from_node: str, to_node: str) -> float:
         """
@@ -304,14 +313,6 @@ class FDPatternGraph:
         """Get all stored information about a node."""
         col_name, value = self._parse_node_id(node_id)
         return {"column": col_name, "value": value}
-
-    def is_source(self, col_name: str) -> bool:
-        """True if col_name never appears as an FD RHS (a source column).
-
-        Only source columns have their singleton patterns dropped from the
-        graph, so only they may need a repair pass-through (see _build_graph).
-        """
-        return col_name in self._source_attributes
 
     def has_node(self, col_name: str, value: str) -> bool:
         """True if a (column, value) node exists in the graph."""

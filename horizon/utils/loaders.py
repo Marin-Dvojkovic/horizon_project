@@ -29,16 +29,18 @@ class CSVFDLoader(FDLoader):
             raise ValueError(f"CSV has less than two columns: {df.columns}")
         logger.debug(f"Loaded CSV with {len(df)} rows")
 
-        set_of_fds: SetOfFDs = SetOfFDs()
+        fds: list[FunctionalDependency] = []
 
-        for row in df.iter_rows():
+        for i, row in enumerate(df.iter_rows()):
             # TODO: drop the ";"-between-every-char workaround for corrupted fds.csv — unnecessary, ugly
             # composite LHS is ";"-separated; lowercase to match load_table's columns
             lhs: tuple[str] = tuple(
                 attr.strip().lower() for attr in str(row[0]).split(";")
             )
             rhs: str = str(row[1]).strip().lower()
-            set_of_fds.add_fd(FunctionalDependency(lhs, rhs))
+            fds.append(FunctionalDependency(lhs, rhs, i))
+
+        set_of_fds: SetOfFDs = SetOfFDs(fds)
 
         logger.info(f"Loaded {len(set_of_fds)} functional dependencies from {source}")
         return set_of_fds
@@ -94,14 +96,15 @@ class TXTFDLoader(FDLoader):
     def load(self, source: Path) -> SetOfFDs:
         logger.debug(f"Loading FDs from TXT: {source}")
 
-        set_of_fds: SetOfFDs = SetOfFDs()
         colnames: list[str] = self._column_names
 
         with open(source, "r", encoding="utf-8") as f:
             lines = f.readlines()
         logger.debug(f"Loaded TXT with {len(lines)} rows")
 
-        for raw in lines:
+        fds: list[FunctionalDependency] = []
+
+        for i, raw in enumerate(lines):
             line = raw.strip()
             if not line or line.startswith("#"):
                 continue
@@ -110,7 +113,9 @@ class TXTFDLoader(FDLoader):
                 continue
             lhs: tuple[str] = tuple(colnames[int(x)] for x in parsed[0])
             rhs: str = colnames[int(parsed[1])]
-            set_of_fds.add_fd(FunctionalDependency(lhs, rhs))
+            fds.append(FunctionalDependency(lhs, rhs, i))
+
+        set_of_fds: SetOfFDs = SetOfFDs(fds)
 
         logger.info(f"Loaded {len(set_of_fds)} functional dependencies from {source}")
         return set_of_fds

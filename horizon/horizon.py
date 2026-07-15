@@ -74,7 +74,7 @@ def repair_tuple(
     columns: dict[str, list[str]],
     t: int,
     fd: FunctionalDependency,
-    repair_table: dict[FunctionalDependency, dict[str, str]],
+    repair_table: list[dict[str, str]],
     p_exp: PatternExpression,
     fd_pattern_graph: FDPatternGraph,
 ) -> None:
@@ -82,9 +82,9 @@ def repair_tuple(
     lval: str = str(columns[fd.lhs][t])
     rval: str = str(columns[fd.rhs][t])
     existing_pattern: FDPattern | None = p_exp.attribute_in_expression(fd.rhs)
-    if lval in repair_table[fd]:
+    if lval in repair_table[fd.index]:
         # LHS value for this FD has been seen before (entry in table)
-        rval = repair_table[fd][lval]
+        rval = repair_table[fd.index][lval]
         pattern: FDPattern = FDPattern(fd, lval, rval)
         p_exp.add_fd_pattern(pattern)
         logger.debug(
@@ -95,29 +95,16 @@ def repair_tuple(
         rval = existing_pattern.rval
         pattern: FDPattern = FDPattern(fd, lval, rval)
         p_exp.add_fd_pattern(pattern)
-        repair_table[fd][lval] = rval
+        repair_table[fd.index][lval] = rval
         logger.debug(
             f"Tuple {t}: Applied existing pattern repair for {fd} (LHS={lval} -> RHS={rval})"
-        )
-    elif fd_pattern_graph.is_source(fd.lhs) and not fd_pattern_graph.has_node(
-        fd.lhs, lval
-    ):
-        # Singleton pattern for a source LHS value: dropped from the graph
-        # (see FDPatternGraph._build_graph). A value seen once has one edge and
-        # no repair choice, so its clean value is its current value -> pass it
-        # through. rval already holds columns[fd.rhs][t].
-        pattern: FDPattern = FDPattern(fd, lval, rval)
-        p_exp.add_fd_pattern(pattern)
-        repair_table[fd][lval] = rval
-        logger.debug(
-            f"Tuple {t}: Passed through dropped-singleton bound value for {fd} (LHS={lval} -> RHS={rval})"
         )
     else:
         # Choose best edge from FD pattern graph
         rhs, rval = fd_pattern_graph.choose_best_next_edge(fd.lhs, lval, fd.rhs)
         pattern: FDPattern = FDPattern(fd, lval, rval)
         p_exp.add_fd_pattern(pattern)
-        repair_table[fd][lval] = rval
+        repair_table[fd.index][lval] = rval
         logger.debug(
             f"Tuple {t}: Applied graph-based repair for {fd} (LHS={lval} -> RHS={rval})"
         )
@@ -129,7 +116,8 @@ def repair_tuple(
 def repair_dirty_data(
     dirty_data_path: Path,
     cleaned_data_output_path: Path,
-    ordered_fds: list[list[FunctionalDependency]],
+    ordered_fds: list[FunctionalDependency],
+    repair_table: list[dict[str, str]],
     fd_pattern_graph: FDPatternGraph,
     n_rows: int | None = None,
     collect_pattern_expressions: bool = False,
@@ -141,9 +129,6 @@ def repair_dirty_data(
 
     # Compute repairs for dirty data
     pattern_expressions: list[PatternExpression] = []
-    repair_table: dict[FunctionalDependency, dict[str, str]] = {
-        fd: {} for fds in ordered_fds for fd in fds
-    }
 
     # Only FD-touched columns are read/mutated by the repair; convert just those
     # to Python lists per batch. Untouched columns ride along as compact Arrow
@@ -151,8 +136,7 @@ def repair_dirty_data(
     fd_columns: list[str] = list(
         {
             col
-            for fds in ordered_fds
-            for fd in fds
+            for fd in ordered_fds
             if not isinstance(fd.lhs, tuple)
             for col in (fd.lhs, fd.rhs)
         }
@@ -186,14 +170,11 @@ def repair_dirty_data(
             # Iterate over tuples in batch and compute pattern expression for each
             for t in range(batch_size):
                 p_exp: PatternExpression = PatternExpression(i)
-                for j in range(len(ordered_fds)):
-                    for fd in ordered_fds[j]:
-                        # TODO: Support multiple attributes on LHS
-                        if isinstance(fd.lhs, tuple):
-                            continue
-                        repair_tuple(
-                            columns, t, fd, repair_table, p_exp, fd_pattern_graph
-                        )
+                for fd in ordered_fds:
+                    # TODO: Support multiple attributes on LHS
+                    if isinstance(fd.lhs, tuple):
+                        continue
+                    repair_tuple(columns, t, fd, repair_table, p_exp, fd_pattern_graph)
                 i += 1
 
                 # Each tuple's PatternExpression is needed only while repairing that tuple
@@ -257,6 +238,7 @@ def run_horizon(
         dirty_data_path,
         output_dir / f"{dataset_name}_cleaned_data.csv",
         ordered_fds,
+        fd_pattern_graph.repair_table,
         fd_pattern_graph,
         n_rows,
         collect_pattern_expressions,

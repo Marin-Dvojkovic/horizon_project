@@ -382,6 +382,17 @@ def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
     # Plot repair time for increasing numbers of tuples
     try:
         for row in eval_repair_time.iter_rows(named=True):
+            ms_or_s: str = "ms"
+            # Switch to seconds if total time of the first entry is larger than 1s
+            if row["total_time"][0] > 1000:
+                ms_or_s = "s"
+                row["order_fds_time"] = [time / 1000 for time in row["order_fds_time"]]
+                row["build_fd_pattern_graph_time"] = [
+                    time / 1000 for time in row["build_fd_pattern_graph_time"]
+                ]
+                row["repair_time"] = [time / 1000 for time in row["repair_time"]]
+                row["total_time"] = [time / 1000 for time in row["total_time"]]
+
             # Skip if only one point
             if len(row["n_tuples"]) < 2:
                 continue
@@ -408,7 +419,7 @@ def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
                     ticker.FuncFormatter(millions_formatter)
                 )
             plt.xlabel("Number of tuples")
-            plt.ylabel("Repair time (ms)")
+            plt.ylabel(f"Repair time ({ms_or_s})")
             plt.grid(axis="y")
             plt.legend()
             plt.tight_layout()

@@ -4,17 +4,23 @@ FunctionalDependency: Representing a functional dependency with one value on the
 
 
 class FunctionalDependency:
+    _index: int
     _order: int | None
     _cyclic: bool | None
 
     def __init__(
-        self, lhs: tuple | list | str, rhs: str, order: int | None = None
+        self,
+        lhs: tuple | list | str,
+        rhs: str,
+        index: int = 0,
+        order: int | None = None,
     ) -> None:
         if isinstance(lhs, str):
             self._lhs = (lhs,)
         else:
             self._lhs = tuple(lhs)
         self._rhs = rhs
+        self._index = index
         self._order = order
         self._cyclic = None
 
@@ -34,6 +40,14 @@ class FunctionalDependency:
     @property
     def rhs(self) -> str:
         return self._rhs
+
+    @property
+    def index(self) -> int:
+        return self._index
+
+    @index.setter
+    def index(self, index: int) -> None:
+        self._index = index
 
     @property
     def order(self) -> int | None:
