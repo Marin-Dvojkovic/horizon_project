@@ -41,6 +41,12 @@ parser.add_argument(
     help="Output directory, relative to the cwd. (default: output)",
 )
 parser.add_argument(
+    "--build_graph_on_subset",
+    "-g",
+    action="store_true",
+    help="Build FD pattern graph on a subset of the data.",
+)
+parser.add_argument(
     "--plot_only",
     "-p",
     action="store_true",
@@ -136,7 +142,11 @@ def eval_run(
 
 
 def run_horizon_benchmark(
-    horizon_path: Path, dataset_path: Path, output_path: Path, output_csv_path: Path
+    horizon_path: Path,
+    dataset_path: Path,
+    output_path: Path,
+    output_csv_path: Path,
+    build_graph_on_subset: bool,
 ) -> list[dict]:
     """Runs Horizon for the given dataset, for each error type and rate, as well as different numbers of tuples. Returns a list of evaluated runs."""
     evaluated_runs: list[dict] = []
@@ -203,6 +213,17 @@ def run_horizon_benchmark(
         for n_tuples in range(
             round(total_rows / 10), total_rows + 1, round(total_rows / 10)
         ):
+            n_tuples_file: str = dirty_data_file
+            # To build FD pattern graph on a subset of the data, create temporary csv
+            if build_graph_on_subset:
+                base = pl.read_csv(
+                    dirty_data_path, n_rows=n_tuples, infer_schema_length=0
+                )
+                n_tuples_file = (
+                    f"{dirty_data_path.stem}_{n_tuples}{dirty_data_path.suffix}"
+                )
+                base.write_csv(dataset_path / Path(n_tuples_file))
+
             # Create sub-directory for each dirty data file and number of tuples
             output_sub_dir: Path = (
                 output_path / dirty_data_path.stem / str(n_tuples)
@@ -218,7 +239,7 @@ def run_horizon_benchmark(
                 "--dataset_dir",
                 str(dataset_path),
                 "--dirty_data_file",
-                str(dirty_data_file),
+                str(n_tuples_file),
                 "--output_dir",
                 str(output_sub_dir),
                 "--log_level",
@@ -261,7 +282,7 @@ def run_horizon_benchmark(
                 dataset_path / "clean.csv"
                 if (dataset_path / "clean.csv").exists()
                 else dataset_path / "clean.parquet",
-                dirty_data_path,
+                dataset_path / n_tuples_file,
                 output_sub_dir / f"{dataset_name}_cleaned_data.csv",
                 output_sub_dir / f"{dataset_name}_statistics.json",
                 n_tuples,
@@ -294,24 +315,29 @@ def run_horizon_benchmark(
                 )
                 writer.writerow(evaluation)
 
+            # Cleanup: Delete temporary file
+            if build_graph_on_subset:
+                Path(dataset_path / n_tuples_file).unlink()
+
     return evaluated_runs
 
 
 def millions_formatter(x: int, pos) -> str:
-    return "%1.2fM" % (x * 1e-6)
+    return "%1.1fM" % (x * 1e-6)
 
 
 def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
     """Creates plots for one dataset with different error types and rates, as well as different numbers of tuples.
     The first type of plots (f1_plot) show the F1 score for increasing error rates, the second type of plots show the throughput for increasing number of tuples, and the third type of plots (repair_time_plot) show the repair time for increasing numbers of tuples."""
-    # Create plot for each error type and repairability, for the full amount of tuples
-    eval_f1: pl.DataFrame = (
-        evals.sort("error_rate")
-        .group_by(["error_type", "repairability", "n_tuples"], maintain_order=True)
-        .agg(pl.col("error_rate") * 100, pl.col("f1"))
-    ).filter(pl.col("n_tuples") == pl.col("n_tuples").max())
     # Plot F1 score for increasing error rates
     try:
+        # Create plot for each error type and repairability, for the full amount of tuples
+        eval_f1: pl.DataFrame = (
+            evals.sort("error_rate")
+            .group_by(["error_type", "repairability", "n_tuples"], maintain_order=True)
+            .agg(pl.col("error_rate") * 100, pl.col("f1"))
+        ).filter(pl.col("n_tuples") == pl.col("n_tuples").max())
+
         for row in eval_f1.iter_rows(named=True):
             # Skip if only one point
             if len(row["error_rate"]) < 2:
@@ -330,17 +356,21 @@ def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
             )
             plt.savefig(f1_plot_path)
             plt.clf()
+            plt.close()
     except Exception as e:
         print(f"Plotting F1 score failed with: {e}. Continuing...")
 
-    # Create plot for each error type, rate, and repairability
-    eval_throughput: pl.DataFrame = (
-        evals.sort("n_tuples")
-        .group_by(["error_type", "error_rate", "repairability"], maintain_order=True)
-        .agg(pl.col("n_tuples"), pl.col("tuples_per_s"))
-    )
     # Plot throughput for increasing numbers of tuples
     try:
+        # Create plot for each error type, rate, and repairability
+        eval_throughput: pl.DataFrame = (
+            evals.sort("n_tuples")
+            .group_by(
+                ["error_type", "error_rate", "repairability"], maintain_order=True
+            )
+            .agg(pl.col("n_tuples"), pl.col("tuples_per_s"))
+        )
+
         for row in eval_throughput.iter_rows(named=True):
             # Skip if only one point
             if len(row["n_tuples"]) < 2:
@@ -364,28 +394,40 @@ def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
             )
             plt.savefig(throughput_plot_path)
             plt.clf()
+            plt.close()
     except Exception as e:
         print(f"Plotting throughput failed with: {e}. Continuing...")
 
-    # Create plot for each error type, rate, and repairability
-    eval_repair_time: pl.DataFrame = (
-        evals.sort("n_tuples")
-        .group_by(["error_type", "error_rate", "repairability"], maintain_order=True)
-        .agg(
-            pl.col("n_tuples"),
-            pl.col("order_fds_time") * 1000,
-            pl.col("build_fd_pattern_graph_time") * 1000,
-            pl.col("repair_time") * 1000,
-            pl.col("total_time") * 1000,
-        )
-    )
     # Plot repair time for increasing numbers of tuples
     try:
+        # Create plot for each error type, rate, and repairability
+        eval_repair_time: pl.DataFrame = (
+            evals.sort("n_tuples")
+            .group_by(
+                ["error_type", "error_rate", "repairability"], maintain_order=True
+            )
+            .agg(
+                pl.col("n_tuples"),
+                pl.col("order_fds_time") * 1000,
+                pl.col("build_fd_pattern_graph_time") * 1000,
+                pl.col("repair_time") * 1000,
+                pl.col("total_time") * 1000,
+            )
+        )
         for row in eval_repair_time.iter_rows(named=True):
-            ms_or_s: str = "ms"
-            # Switch to seconds if total time of the first entry is larger than 1s
+            ms_s_min: str = "ms"
+            if row["total_time"][0] > 60000:
+                # Switch to minutes if total time of the first entry is larger than 1min
+                ms_s_min = "min"
+                row["order_fds_time"] = [time / 60000 for time in row["order_fds_time"]]
+                row["build_fd_pattern_graph_time"] = [
+                    time / 1000 for time in row["build_fd_pattern_graph_time"]
+                ]
+                row["repair_time"] = [time / 60000 for time in row["repair_time"]]
+                row["total_time"] = [time / 60000 for time in row["total_time"]]
             if row["total_time"][0] > 1000:
-                ms_or_s = "s"
+                # Switch to seconds if total time of the first entry is larger than 1s
+                ms_s_min = "s"
                 row["order_fds_time"] = [time / 1000 for time in row["order_fds_time"]]
                 row["build_fd_pattern_graph_time"] = [
                     time / 1000 for time in row["build_fd_pattern_graph_time"]
@@ -419,7 +461,7 @@ def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
                     ticker.FuncFormatter(millions_formatter)
                 )
             plt.xlabel("Number of tuples")
-            plt.ylabel(f"Repair time ({ms_or_s})")
+            plt.ylabel(f"Repair time ({ms_s_min})")
             plt.grid(axis="y")
             plt.legend()
             plt.tight_layout()
@@ -432,6 +474,31 @@ def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
             )
             plt.savefig(repair_time_plot_path)
             plt.clf()
+            plt.close()
+
+            # Total time plots
+            plt.bar(
+                row["n_tuples"], row["total_time"], width=width * 0.8, edgecolor="black"
+            )
+            plt.xticks(row["n_tuples"])
+            if row["n_tuples"][0] > 1000000:
+                plt.gca().xaxis.set_major_formatter(
+                    ticker.FuncFormatter(millions_formatter)
+                )
+            plt.xlabel("Number of tuples")
+            plt.ylabel(f"Total repair time ({ms_s_min})")
+            plt.grid(axis="y")
+            plt.tight_layout()
+            total_time_plot_path: Path = (
+                output_dir
+                / f"{row['error_type']}_{row['error_rate']}_{row['repairability']}_total_time_plot.png"
+                if row["repairability"] is not None
+                else output_dir
+                / f"{row['error_type']}_{row['error_rate']}_total_time_plot.png"
+            )
+            plt.savefig(total_time_plot_path)
+            plt.clf()
+            plt.close()
     except Exception as e:
         print(f"Plotting repair time failed with: {e}. Continuing...")
 
@@ -458,7 +525,11 @@ def plot_all(results: pl.DataFrame, output_dir: Path) -> None:
 
 
 def main(
-    horizon_path: Path, all_datasets_dir: Path, output_dir: Path, plot_only: bool
+    horizon_path: Path,
+    all_datasets_dir: Path,
+    output_dir: Path,
+    build_graph_on_subset: bool,
+    plot_only: bool,
 ) -> None:
     # Create output directory
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -488,7 +559,11 @@ def main(
 
         # Run Horizon
         evaluation: list[dict] = run_horizon_benchmark(
-            horizon_path, dataset_path, dataset_output_dir, results_file
+            horizon_path,
+            dataset_path,
+            dataset_output_dir,
+            results_file,
+            build_graph_on_subset,
         )
         # Remove dataset output directory if benchmark failed
         if len(evaluation) == 0:
@@ -507,5 +582,6 @@ if __name__ == "__main__":
         Path(args.horizon_path),
         Path(args.all_datasets_dir),
         Path(args.output_dir),
+        args.build_graph_on_subset,
         args.plot_only,
     )
