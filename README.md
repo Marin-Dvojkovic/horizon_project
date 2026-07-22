@@ -16,7 +16,21 @@ This installs all dependencies (defined in [`pyproject.toml`](pyproject.toml).) 
 
 **3.** Make sure to use the Python interpreter from `.venv` — in VS Code, select it via **Select Interpreter** and point it to `.venv/bin/python` (or `.venv/Scripts/python.exe` on Windows).
 
+## Layout
+
+- `horizon/` — core model + repair pipeline. `utils/` holds utility functions, e.g., data loaders and logging configuration. `fds/` keeps all Functional Dependency related classes, i.e.`FunctionalDependency`, `SetOfFDs`, `FDPattern`, and `PatternExpression`. The repair pipeline is split into `static_fd_analysis.py`, `fd_pattern_graph.py`, and `horizon.py`.
+- `benchmarks/` — code to run and plot Horizon benchmarks and comparisons.
+- `eval/` — dataset/FD characterization metrics; `characterize()` / `characterize_lazy()`.
+- `inject.py` + `notebooks/build_injected.ipynb` — rebuild BART-injected dirty tables from `bart/`.
+- `remote_data/` — fetch/upload dataset tables to Hugging Face.
+- `datasets/` — local data (gitignored), one folder per table; pulled from HF.
+- `docs/` — code documentation with Doxygen.
+- `tests/` — simple test cases confirming the correctness of the implementation.
+- `experiments/` — Summaries of Horizon experiments and insights.
+
 ## Running the code
+
+### Horizon pipeline
 
 In the project directory, run:
 
@@ -34,19 +48,17 @@ Explanation of arguments:
 - _--enable_plotting_ or _-p_: Enable plotting of the graphs.
 - _--collect_pattern_expressions_ or _-ex_: Enable collection of pattern expressions in a `.txt` file for lineage.
 
+### Benchmarking
+
+For an explanation on how to run benchmarking experiments, see [`benchmarks/`](benchmarks/README.md)
+
+### Notebooks
+
+For an explanation on how to run benchmarking experiments, see [`notebooks/`](notebooks/README.md)
+
+### Tests
+
 Run the tests with `uv run pytest`.
-
-## Layout
-
-- `horizon/` — core model + repair pipeline. `utils/` holds `FunctionalDependency`,
-  `get_fds()` and `load_table()`; `FDGraph.py`, `horizon.py`, `static_fd_analysis.py` the repair.
-- `benchmarks/` — code to run and plot Horizon benchmarks and comparisons.
-- `eval/` — dataset/FD characterization metrics; `characterize()` / `characterize_lazy()`.
-- `inject.py` + `notebooks/build_injected.ipynb` — rebuild BART-injected dirty tables from `bart/`.
-- `remote_data/` — fetch/upload dataset tables to Hugging Face.
-- `datasets/` — local data (gitignored), one folder per table; pulled from HF.
-- `docs/` — code documentation with Doxygen.
-- `tests/` — simple test cases confirming the correctness of the implementation.
 
 ## Remote data
 
