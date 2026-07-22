@@ -56,6 +56,7 @@ class FDPatternGraph:
         logger.debug(f"Loading data from {str(data_path)}")
 
         # Initialize repair table
+        self._pruning = pruning
         self._repair_table = [dict() for fd in set_of_fds]
 
         start: float = time.time()
@@ -65,7 +66,7 @@ class FDPatternGraph:
         self.graph = self._build_graph(data_path, set_of_fds)
 
         # Pruning is always true, deactivate only for debugging
-        if pruning:
+        if self._pruning:
             logger.info("Pruning edges of FDPatternGraph...")
             # Prune unused edges
             self._prune_edges()
@@ -97,6 +98,7 @@ class FDPatternGraph:
             )
             plt.savefig(str(output_dir / f"{dataset_name}_fd_pattern_graph.png"))
             plt.clf()
+            plt.close()
 
     @property
     def repair_table(self) -> list[dict[str, str]]:
@@ -146,7 +148,7 @@ class FDPatternGraph:
         G: nx.DiGraph = nx.DiGraph()
 
         # Get reverse ordered set of FDs for bottom-up addition of edges
-        # TODO: Support multiple attributes on LHS
+        # NOTE: Currently does not support multiple attributes on LHS
         ordered_set_of_fds: list[tuple[int, FunctionalDependency]] = [
             (fd.index, fd)
             for fd in set_of_fds.get_ordered_set_of_fds()
@@ -189,25 +191,26 @@ class FDPatternGraph:
             counts: dict[tuple, int] = pair_counts[fd]
             fd_repairs: dict[str, str] = self._repair_table[fd_index]
 
-            # Get total LHS count: a real violation (same LHS -> two RHS) is two pairs of
-            # count 1 whose LHS total is 2, and must be kept
+            # Get total LHS appearances: a real violation (same LHS -> two RHS) has LHS total 2,
+            # and must be kept, a single pattern with count 3 can be discarded
             lhs_totals: dict = {}
             for (lval, _rval), count in counts.items():
-                lhs_totals[lval] = lhs_totals.get(lval, 0) + count
+                lhs_totals[lval] = lhs_totals.get(lval, 0) + 1
 
-            # Check singleton FD patterns (count == 1 and LHS total < 2) during loop,
+            # Check singleton FD patterns (LHS total < 2) during loop,
             # then directly insert into the repair table and mark for deletion
 
             # Compute quality for each FD edge (non back-edges)
             for (lval, rval), count in counts.items():
                 # If pattern appears only once, insert directly into repair table
-                singleton_pattern: bool = count == 1 and lhs_totals[lval] < 2
-                if singleton_pattern:
-                    fd_repairs[str(lval)] = str(rval)
-                    # Skip edge creation for source attributes (never appears as a RHS)
+                singleton_pattern: bool = lhs_totals[lval] < 2
+                if singleton_pattern and fd.lhs in set_of_fds.source_attributes:
+                    # Always skip edge creation for source attributes (never appears as a RHS)
                     # Dropping this edge changes no other edge's quality
-                    if fd.lhs in set_of_fds.source_attributes:
-                        continue
+                    fd_repairs[str(lval)] = str(rval)
+                    continue
+                elif singleton_pattern and self._pruning:
+                    fd_repairs[str(lval)] = str(rval)
 
                 # If FD is cyclic, all its edges are back-edges, therefore skip quality computation
                 if fd.cyclic:
@@ -262,7 +265,7 @@ class FDPatternGraph:
                     mark_delete=singleton_pattern,
                 )
 
-        # TODO: Compute quality for back-edges (currently added with support-only quality)
+        # NOTE: Currently back-edges are added with support-only quality
 
         logger.debug(
             f"Initial graph construction completed: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges"

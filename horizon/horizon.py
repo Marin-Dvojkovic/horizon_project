@@ -171,7 +171,7 @@ def repair_dirty_data(
             for t in range(batch_size):
                 p_exp: PatternExpression = PatternExpression(i)
                 for fd in ordered_fds:
-                    # TODO: Support multiple attributes on LHS
+                    # NOTE: Currently does not support multiple attributes on LHS
                     if isinstance(fd.lhs, tuple):
                         continue
                     repair_tuple(columns, t, fd, repair_table, p_exp, fd_pattern_graph)

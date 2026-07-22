@@ -13,11 +13,15 @@ logger = get_logger(__name__)
 
 
 class FDLoader(ABC):
+    """Abstract base class for FD loaders."""
+
     @abstractmethod
     def load(self, source) -> SetOfFDs: ...
 
 
 class CSVFDLoader(FDLoader):
+    """Class to load FDs from a CSV file into a SetOfFDs object."""
+
     def __init__(self) -> None:
         logger.debug("Initialized CSVFDLoader")
 
@@ -47,17 +51,33 @@ class CSVFDLoader(FDLoader):
 
 
 class TXTFDLoader(FDLoader):
-    def __init__(self, columns_csv_path: Path, separator: str = "->") -> None:
-        if not columns_csv_path.exists:
-            logger.error(f"CSV file {str(columns_csv_path)} does not exist")
-            raise ValueError(f"CSV file {str(columns_csv_path)} does not exist")
-        self._column_names = self.load_column_names(columns_csv_path)
+    """
+    Class to load FDs from a TXT file into a SetOfFDs object. Assumes FDs in the file
+    are represented by column indices and a separator (e.g., 1 -> 5).
+    """
+
+    def __init__(
+        self, columns_or_path: list[str] | Path, separator: str = "->"
+    ) -> None:
+        """Constructor requires a list of columns or a CSV path from which the column
+        names can be extracted. It also requires a separator (default: ->)."""
         self._separator: str = separator
+        if isinstance(columns_or_path, list):
+            self._column_names = columns_or_path
+            logger.debug(
+                f"Initialized TXTFDLoader with columns: {self._column_names}, separator: {separator}"
+            )
+            return
+        if not columns_or_path.exists:
+            logger.error(f"CSV file {str(columns_or_path)} does not exist")
+            raise ValueError(f"CSV file {str(columns_or_path)} does not exist")
+        self._column_names = self.load_column_names(columns_or_path)
         logger.debug(
-            f"Initialized TXTFDLoader with columns: {self._column_names}, separator: {separator}"
+            f"Initialized TXTFDLoader with columns: {self._column_names} from file {str(columns_or_path)}, separator: {separator}"
         )
 
     def load_column_names(self, columns_csv_path: Path) -> list[str]:
+        """Loads column names from a given CSV file and returns them as a list."""
         # Read only the header (no rows needed)
         try:
             df: pl.DataFrame = pl.read_csv(
@@ -84,6 +104,8 @@ class TXTFDLoader(FDLoader):
                 )
 
     def parse_line(self, line) -> tuple[list[str], str] | None:
+        """Helper function to parse one line of a file and translate it into
+        a tuple containing the FD's LHS and RHS."""
         parts = line.split(self._separator)
         if len(parts) != 2:
             return None
@@ -127,7 +149,7 @@ _EXTENSION_LOADERS: dict[str, type[FDLoader]] = {
 }
 
 
-def get_fds(source: Path, columns_csv_path: Path) -> SetOfFDs:
+def get_fds(source: Path, columns_or_path: list[str] | Path) -> SetOfFDs:
     """Extracts FDs as SetOfFDs from the given source. Source can be fds.csv or fds.txt."""
     if not source.exists():
         logger.error(f"File {str(source)} does not exist")
@@ -141,7 +163,7 @@ def get_fds(source: Path, columns_csv_path: Path) -> SetOfFDs:
         raise ValueError(f"No loader registered for extension '{ext}'")
 
     if loader == TXTFDLoader:
-        return TXTFDLoader(columns_csv_path).load(source)
+        return TXTFDLoader(columns_or_path).load(source)
     return loader().load(source)
 
 
@@ -208,10 +230,15 @@ def load_table(
     lf: pl.LazyFrame = scanner(source, n_rows)
     # Remove data types in brackets
     # Lowercase column names to match the casing convention in the FD loaders.
-    lf = lf.rename({c: c.strip().lower() for c in lf.collect_schema().names()})
+    lf = lf.rename(
+        {
+            c: re.sub(r"\(.*?\)", "", c.strip().lower())
+            for c in lf.collect_schema().names()
+        }
+    )
 
     if columns is not None:
-        wanted: list[str] = [c.strip().lower() for c in columns]
+        wanted: list[str] = [re.sub(r"\(.*?\)", "", c.strip().lower()) for c in columns]
         missing: list[str] = [c for c in wanted if c not in lf.collect_schema().names()]
         if missing:
             raise ValueError(f"columns not found: {missing}")
@@ -240,10 +267,15 @@ def lazy_load_table(
     lf: pl.LazyFrame = scanner(source, n_rows)
     # Remove data types in brackets
     # Lowercase column names to match the casing convention in the FD loaders.
-    lf = lf.rename({c: c.strip().lower() for c in lf.collect_schema().names()})
+    lf = lf.rename(
+        {
+            c: re.sub(r"\(.*?\)", "", c.strip().lower())
+            for c in lf.collect_schema().names()
+        }
+    )
 
     if columns is not None:
-        wanted: list[str] = [c.strip().lower() for c in columns]
+        wanted: list[str] = [re.sub(r"\(.*?\)", "", c.strip().lower()) for c in columns]
         missing: list[str] = [c for c in wanted if c not in lf.collect_schema().names()]
         if missing:
             raise ValueError(f"columns not found: {missing}")
@@ -294,13 +326,21 @@ def iter_table_batches(
     include_columns: list[str] | None = None
     kept: list[str] = header
     if columns is not None:
-        wanted: set[str] = {c.strip().lower() for c in columns}
-        kept = [name for name in header if name.strip().lower() in wanted]
-        missing: set[str] = wanted - {name.strip().lower() for name in kept}
+        wanted: set[str] = {re.sub(r"\(.*?\)", "", c.strip().lower()) for c in columns}
+        kept = [
+            name
+            for name in header
+            if re.sub(r"\(.*?\)", "", name.strip().lower()) in wanted
+        ]
+        missing: set[str] = wanted - {
+            re.sub(r"\(.*?\)", "", name.strip().lower()) for name in kept
+        }
         if missing:
             raise ValueError(f"columns not found: {sorted(missing)}")
         include_columns = kept
-    rename: dict[str, str] = {name: name.strip().lower() for name in kept}
+    rename: dict[str, str] = {
+        name: re.sub(r"\(.*?\)", "", name.strip().lower()) for name in kept
+    }
 
     reader = pa_csv.open_csv(
         str(source),

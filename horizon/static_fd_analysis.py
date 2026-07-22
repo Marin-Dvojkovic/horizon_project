@@ -306,6 +306,7 @@ class FDGraph:
         plt.gca().invert_yaxis()  # Plot tree with root at top
         plt.savefig(str(output_dir / f"{dataset_name}_fd_graph.png"))
         plt.clf()
+        plt.close()
 
         # Visualize components
         logger.debug("Saving component visualization")
@@ -322,6 +323,7 @@ class FDGraph:
         plt.gca().invert_yaxis()  # Plot tree with root at top
         plt.savefig(str(output_dir / f"{dataset_name}_fd_graph_components.png"))
         plt.clf()
+        plt.close()
 
         # Visualize SCCG
         logger.debug("Saving SCC graph visualization")
@@ -347,6 +349,7 @@ class FDGraph:
         plt.gca().invert_yaxis()  # Plot tree with root at top
         plt.savefig(str(output_dir / f"{dataset_name}_scc_fd_graph.png"))
         plt.clf()
+        plt.close()
 
     def graph_data(self) -> dict:
         """Structured, JSON-serialisable description of the graphs for the UI.
