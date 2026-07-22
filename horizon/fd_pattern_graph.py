@@ -148,7 +148,7 @@ class FDPatternGraph:
         G: nx.DiGraph = nx.DiGraph()
 
         # Get reverse ordered set of FDs for bottom-up addition of edges
-        # TODO: Support multiple attributes on LHS
+        # NOTE: Currently does not support multiple attributes on LHS
         ordered_set_of_fds: list[tuple[int, FunctionalDependency]] = [
             (fd.index, fd)
             for fd in set_of_fds.get_ordered_set_of_fds()
@@ -265,7 +265,7 @@ class FDPatternGraph:
                     mark_delete=singleton_pattern,
                 )
 
-        # TODO: Compute quality for back-edges (currently added with support-only quality)
+        # NOTE: Currently back-edges are added with support-only quality
 
         logger.debug(
             f"Initial graph construction completed: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges"
