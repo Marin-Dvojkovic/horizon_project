@@ -1,3 +1,10 @@
+"""Loaders for FDs and data tables (paper §3.1: FDs Sigma and instance I).
+
+Reads the FD set (Sigma) from fds.csv/fds.txt into a SetOfFDs, and reads a data
+instance from CSV/Parquet into polars frames with a shared lowercase-column
+convention so FD attribute names and table columns line up.
+"""
+
 import re
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -13,10 +20,19 @@ logger = get_logger(__name__)
 
 
 class FDLoader(ABC):
-    """Abstract base class for FD loaders."""
+    """Abstract base class for FD loaders, dispatched on file extension."""
 
     @abstractmethod
-    def load(self, source) -> SetOfFDs: ...
+    def load(self, source) -> SetOfFDs:
+        """Load FDs from the source into a SetOfFDs.
+
+        Args:
+            source: Path to the FD file to read.
+
+        Returns:
+            The parsed SetOfFDs.
+        """
+        ...
 
 
 class CSVFDLoader(FDLoader):
@@ -26,6 +42,22 @@ class CSVFDLoader(FDLoader):
         logger.debug("Initialized CSVFDLoader")
 
     def load(self, source: Path) -> SetOfFDs:
+        """Load FDs from a CSV with `from`/`to` columns into a SetOfFDs.
+
+        A composite LHS is `;`-separated in the `from` column; each LHS attribute
+        and the RHS are stripped and lowercased to match load_table's columns.
+        The `;`-split also serves as a workaround for a corrupted fds.csv whose
+        LHS had a `;` between every character (see the TODO below).
+
+        Args:
+            source: Path to the FD CSV file.
+
+        Returns:
+            The parsed SetOfFDs.
+
+        Raises:
+            ValueError: If the CSV has fewer than two columns.
+        """
         logger.debug(f"Loading FDs from CSV: {source}")
         df: pl.DataFrame = pl.read_csv(source)
         if len(df.columns) < 2:
@@ -59,8 +91,16 @@ class TXTFDLoader(FDLoader):
     def __init__(
         self, columns_or_path: list[str] | Path, separator: str = "->"
     ) -> None:
-        """Constructor requires a list of columns or a CSV path from which the column
-        names can be extracted. It also requires a separator (default: ->)."""
+        """Initialise the loader with column names and an FD separator.
+
+        Args:
+            columns_or_path: Either the column names directly, or a CSV path
+                whose header supplies them (indices in the TXT map to columns).
+            separator: Token separating LHS from RHS in each line.
+
+        Raises:
+            ValueError: If a CSV path is given but does not exist.
+        """
         self._separator: str = separator
         if isinstance(columns_or_path, list):
             self._column_names = columns_or_path
@@ -68,6 +108,8 @@ class TXTFDLoader(FDLoader):
                 f"Initialized TXTFDLoader with columns: {self._column_names}, separator: {separator}"
             )
             return
+        # NOTE: bug — `exists` is not called (missing ()), so this is always
+        # truthy and the guard never raises on a missing path. Not fixed.
         if not columns_or_path.exists:
             logger.error(f"CSV file {str(columns_or_path)} does not exist")
             raise ValueError(f"CSV file {str(columns_or_path)} does not exist")
@@ -77,7 +119,17 @@ class TXTFDLoader(FDLoader):
         )
 
     def load_column_names(self, columns_csv_path: Path) -> list[str]:
-        """Loads column names from a given CSV file and returns them as a list."""
+        """Read column names from a CSV header, stripping bracketed dtypes.
+
+        Args:
+            columns_csv_path: Path to the CSV whose header names the columns.
+
+        Returns:
+            Column names with any `(...)` dtype suffix removed.
+
+        Raises:
+            RuntimeError: If the CSV cannot be read at all.
+        """
         # Read only the header (no rows needed)
         try:
             df: pl.DataFrame = pl.read_csv(
@@ -104,8 +156,15 @@ class TXTFDLoader(FDLoader):
                 )
 
     def parse_line(self, line) -> tuple[list[str], str] | None:
-        """Helper function to parse one line of a file and translate it into
-        a tuple containing the FD's LHS and RHS."""
+        """Parse one TXT line into LHS/RHS column indices.
+
+        Args:
+            line: A single line, LHS and RHS separated by `self._separator`,
+                LHS indices comma-separated.
+
+        Returns:
+            A (lhs_indices, rhs_index) tuple, or None if the line is malformed.
+        """
         parts = line.split(self._separator)
         if len(parts) != 2:
             return None
@@ -116,6 +175,17 @@ class TXTFDLoader(FDLoader):
         return lhs_indices, rhs_index
 
     def load(self, source: Path) -> SetOfFDs:
+        """Load FDs from a TXT file of column-index rules into a SetOfFDs.
+
+        Blank lines and `#` comment lines are skipped; each remaining line's
+        indices are resolved against the configured column names.
+
+        Args:
+            source: Path to the FD TXT file.
+
+        Returns:
+            The parsed SetOfFDs.
+        """
         logger.debug(f"Loading FDs from TXT: {source}")
 
         colnames: list[str] = self._column_names
@@ -150,7 +220,19 @@ _EXTENSION_LOADERS: dict[str, type[FDLoader]] = {
 
 
 def get_fds(source: Path, columns_or_path: list[str] | Path) -> SetOfFDs:
-    """Extracts FDs as SetOfFDs from the given source. Source can be fds.csv or fds.txt."""
+    """Load FDs from a source file, dispatching on its extension.
+
+    Args:
+        source: Path to fds.csv or fds.txt.
+        columns_or_path: Column names or a CSV path, used only by the TXT loader
+            to resolve column indices; ignored for CSV.
+
+    Returns:
+        The parsed SetOfFDs.
+
+    Raises:
+        ValueError: If the source does not exist or its extension is unregistered.
+    """
     if not source.exists():
         logger.error(f"File {str(source)} does not exist")
         raise ValueError(f"File {str(source)} does not exist")
@@ -168,8 +250,19 @@ def get_fds(source: Path, columns_or_path: list[str] | Path) -> SetOfFDs:
 
 
 def load_fds(dataset_dir: Path, data_csv_path: Path) -> SetOfFDs:
-    """Finds an FD file under the given dataset directory.
-    Prefers fds.csv, otherwise extracts FDs from fds.txt. Returns SetOfFDs."""
+    """Find and load the FD file under a dataset directory (prefers fds.csv).
+
+    Args:
+        dataset_dir: Directory searched for an `fds.*` file.
+        data_csv_path: Data CSV path passed through to the TXT loader for
+            resolving column indices.
+
+    Returns:
+        The parsed SetOfFDs.
+
+    Raises:
+        ValueError: If no FD file is found under the directory.
+    """
     # Check for fds.csv or fds.txt (prefer .csv)
     fd_files: list[Path] = sorted(
         list(dataset_dir.glob("fds.*")),
@@ -189,12 +282,14 @@ def load_fds(dataset_dir: Path, data_csv_path: Path) -> SetOfFDs:
 
 
 def _scan_csv(source: Path, n_rows: int | None) -> pl.LazyFrame:
+    """Lazily scan a CSV with every column typed as Utf8."""
     # read every column as Utf8: Horizon treats all cells as strings, and
     # dtype inference would rewrite e.g. "5" -> "5.0" on output
     return pl.scan_csv(source, infer_schema_length=0, n_rows=n_rows)
 
 
 def _scan_parquet(source: Path, n_rows: int | None) -> pl.LazyFrame:
+    """Lazily scan a Parquet file, casting every column to Utf8."""
     # cast every column to Utf8 to match _scan_csv: Horizon treats all cells as
     # strings, and parquet's native types would otherwise write e.g. "5" -> "5.0"
     return pl.scan_parquet(source, n_rows=n_rows).cast(pl.Utf8)
@@ -209,13 +304,26 @@ _SCANNERS = {
 def load_table(
     source: Path, columns: list[str] | None = None, n_rows: int | None = None
 ) -> pl.DataFrame:
-    """Read a CSV or Parquet table with column names lowercased.
+    """Read a CSV or Parquet table into a DataFrame with columns lowercased.
 
     Dispatches to a per-extension scanner. Matches the lowercasing in
     `CSVFDLoader` so FDs and DataFrame columns share one casing convention.
-    Pass `columns` (any casing) to read only a subset — projection is pushed
-    down into the scan so unselected columns are never read. Missing names
-    raise ValueError.
+    Projection is pushed into the scan, so unselected columns are never read.
+
+    Note: near-duplicate of `lazy_load_table`; the only difference is the final
+    `.collect()` here.
+
+    Args:
+        source: Path to the CSV or Parquet file.
+        columns: Optional subset to read (any casing); None reads all columns.
+        n_rows: Optional cap on the number of rows read.
+
+    Returns:
+        The materialised DataFrame.
+
+    Raises:
+        ValueError: If the source is missing, its extension is unregistered, or
+            a requested column is not found.
     """
     if not source.exists():
         logger.error(f"File {str(source)} does not exist")
@@ -249,10 +357,24 @@ def load_table(
 def lazy_load_table(
     source: Path, columns: list[str] | None = None, n_rows: int | None = None
 ) -> pl.LazyFrame:
-    """Read a CSV or Parquet table with column names lowercased.
-    Same as load_table() but returns a LazyFrame.
+    """Read a CSV or Parquet table into a LazyFrame with columns lowercased.
 
     Allows streaming and is more suitable for data larger than RAM.
+
+    Note: near-duplicate of `load_table`; the only difference is that this
+    returns the LazyFrame without a final `.collect()`.
+
+    Args:
+        source: Path to the CSV or Parquet file.
+        columns: Optional subset to read (any casing); None reads all columns.
+        n_rows: Optional cap on the number of rows read.
+
+    Returns:
+        The uncollected LazyFrame.
+
+    Raises:
+        ValueError: If the source is missing, its extension is unregistered, or
+            a requested column is not found.
     """
     if not source.exists():
         logger.error(f"File {str(source)} does not exist")
@@ -289,17 +411,28 @@ def iter_table_batches(
     n_rows: int | None = None,
     block_bytes: int = 8 * 1024 * 1024,
 ) -> Iterator[pl.DataFrame]:
-    """Yield a table in row batches using memory BOUNDED by block size, not file size.
+    """Yield a table in row batches with memory bounded by block size, not file size.
 
-    Additive, non-breaking companion to lazy_load_table for streaming a whole
+    Additive, non-breaking companion to `lazy_load_table` for streaming a whole
     table once (e.g. the repair loop). For CSV it reads via pyarrow's block-based
     reader, whose peak memory is ~O(block_bytes) regardless of file size -- unlike
     scan_csv().collect_batches(), which under the polars streaming engine
     materialises ~a full copy of the CSV. Columns are read as Utf8 and lowercased,
-    matching lazy_load_table. Pass `columns` (any casing) to read only a subset --
-    projection is pushed into the reader so unselected columns are never parsed;
-    missing names raise ValueError. Non-CSV sources fall back to the existing lazy
-    streaming path, so their behaviour is unchanged. Stops after n_rows rows.
+    matching `lazy_load_table`. Non-CSV sources fall back to the lazy streaming
+    path, so their behaviour is unchanged.
+
+    Args:
+        source: Path to the CSV or Parquet file.
+        columns: Optional subset to read (any casing); projection is pushed into
+            the reader so unselected columns are never parsed.
+        n_rows: Optional cap on total rows yielded across all batches.
+        block_bytes: Target CSV read-block size, bounding peak memory.
+
+    Yields:
+        Row-batch DataFrames with lowercased Utf8 columns.
+
+    Raises:
+        ValueError: If the source is missing or a requested column is not found.
     """
     if not source.exists():
         logger.error(f"File {str(source)} does not exist")
