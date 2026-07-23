@@ -1,3 +1,11 @@
+"""Facades bundling the dataset- and FD-side metrics for one table + FD set.
+
+``characterize`` runs the full metric suite over an in-memory table;
+``characterize_lazy`` covers tables too large to materialise by loading only
+``attr(fd)`` per FD. Both reuse the primitives in ``eval.dataset_eval`` and
+``eval.fd_eval``.
+"""
+
 from pathlib import Path
 
 import polars as pl
@@ -14,7 +22,16 @@ from horizon.utils.loaders import load_table
 
 
 def characterize(df: pl.DataFrame, fds: list[FunctionalDependency]) -> dict:
-    """Merge characterize_dataset(df) and characterize_fds(fds) into one dict."""
+    """Merge the dataset-side and FD-side metrics for a table into one dict.
+
+    Args:
+        df: The table to characterise.
+        fds: FDs defined over the table.
+
+    Returns:
+        Combined dict of ``characterize_dataset(df)`` and
+        ``characterize_fds(fds)`` plus ``fd_lhs_redundancy``.
+    """
     return {
         **characterize_dataset(df),
         **characterize_fds(fds),
@@ -23,10 +40,19 @@ def characterize(df: pl.DataFrame, fds: list[FunctionalDependency]) -> dict:
 
 
 def characterize_lazy(source: str | Path, fds: list[FunctionalDependency]) -> dict:
-    """FD-side metrics for tables too large to materialise.
+    """Compute FD-side metrics for a table too large to materialise.
 
-    Each FD loads only `attr(fd)` from disk (projection pushed into scan_csv
-    by `load_table`). Reuses the in-memory primitives once columns are loaded.
+    Each FD loads only ``attr(fd)`` from disk (projection pushed into
+    ``scan_csv`` by ``load_table``), then reuses the in-memory primitives.
+    Progress is printed per FD.
+
+    Args:
+        source: Path to the table on disk.
+        fds: FDs to characterise; columns are loaded per FD.
+
+    Returns:
+        Dict from ``characterize_fds`` plus ``fd_lhs_redundancy``,
+        ``redundancy_per_column``, ``g3_error`` and ``violation_clusters``.
     """
     out = {**characterize_fds(fds)}
     lhs_red: dict[tuple, float] = {}

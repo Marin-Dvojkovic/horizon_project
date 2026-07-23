@@ -1,5 +1,8 @@
-"""
-FDPatternGraph: Build a NetworkX graph from CSV data with Functional Dependency edges.
+"""FD pattern graph construction and edge-quality scoring.
+
+Implements the FD pattern graph (FDG) encoding of paper §3.2 as a NetworkX
+DiGraph over (column, value) nodes, plus the pattern-quality measure of §3.3
+(``(support + Σ reachable support) / (reachable + 1)``) computed per edge.
 
 Each unique (column, value) pair becomes a node. This means:
 - Same values in the same column share the same node
@@ -21,11 +24,14 @@ logger = get_logger(__name__)
 
 
 class FDPatternGraph:
-    """
-    A graph representation of CSV data with functional dependency edges.
+    """FD pattern graph (FDG) over (column, value) nodes with quality-scored edges.
 
-    Nodes represent unique (column, value) pairs. Multiple cells with the
-    same value in the same column will reference the same node.
+    Encodes the FD patterns of the data as a directed graph (paper §3.2): nodes are
+    unique (column, value) pairs and each edge is one FD pattern carrying its §3.3
+    quality score. Multiple cells sharing a value in a column reference one node.
+
+    Attributes:
+        graph: The underlying NetworkX DiGraph of FD patterns.
     """
 
     # Class variable
@@ -41,12 +47,19 @@ class FDPatternGraph:
         output_dir: Path = Path("output"),
         enable_plotting: bool = False,
     ) -> None:
-        """
-        Initialize the FDPatternGraph.
+        """Build the FD pattern graph and score its edges (paper §3.2-§3.3).
 
         Args:
-            data_path: Path to the CSV file containing the data
-            set_of_fds: Parsed set of functional dependencies
+            data_path: Path to the CSV file containing the data.
+            set_of_fds: Parsed set of functional dependencies.
+            dataset_name: Name used to prefix any plotted output.
+            pruning: If True (default), drop singleton-pattern edges after building;
+                disable only for debugging.
+            output_dir: Directory a graph plot is saved to when plotting is enabled.
+            enable_plotting: If True, save a small subgraph visualization.
+
+        Returns:
+            None.
         """
         logger.info(
             f"Initializing FDPatternGraph with data: {str(data_path)}, FDs: {str(set_of_fds)}"
@@ -84,9 +97,7 @@ class FDPatternGraph:
                 node
                 for col_name in set_of_fds.unique_attributes
                 for node in [
-                    n
-                    for n in self.graph.nodes()
-                    if self._parse_node_id(n)[0] == col_name
+                    n for n in self.graph.nodes() if self._parse_node_id(n)[0] == col_name
                 ][:3]
             ]
             sub_g: nx.Graph = self.graph.subgraph(sub_g_nodes)
@@ -102,47 +113,60 @@ class FDPatternGraph:
 
     @property
     def repair_table(self) -> list[dict[str, str]]:
+        """Return the per-FD LHS->RHS mapping tables seeded during graph building."""
         return self._repair_table
 
     @property
     def number_of_nodes(self) -> int:
+        """Return the number of nodes in the graph."""
         return self.graph.number_of_nodes()
 
     @property
     def number_of_edges(self) -> int:
+        """Return the number of edges in the graph."""
         return self.graph.number_of_edges()
 
     def _cell_node_id(self, col_name: str, value) -> str:
-        """
-        Generate a unique node ID for a (column, value) pair.
+        """Build the unique node ID for a (column, value) pair.
 
-        Format: "{col_name}__{value}" - e.g., "brewery-name__Guinness"
-        Same value in the same column always produces the same node ID.
-        Different columns get different nodes even for the same value.
+        Format ``"{col_name}__{value}"`` (e.g. ``"brewery-name__Guinness"``). The
+        same value in the same column always yields the same ID; different columns
+        get different nodes even for the same value.
+
+        Args:
+            col_name: Column (attribute) name.
+            value: Cell value.
+
+        Returns:
+            The node identifier string.
         """
         return f"{col_name}__{value}"
 
     def _parse_node_id(self, node_id: str) -> tuple[str, str]:
-        """
-        Parse a node ID back to (col_name, value).
+        """Parse a node ID back into its (column, value) pair.
 
         Args:
-            node_id: Node identifier like "brewery-name_Guinness"
+            node_id: Node identifier like ``"brewery-name__Guinness"``.
 
         Returns:
-            Tuple of (column_name, value)
+            Tuple of (column_name, value).
         """
         col_name, _, value = node_id.partition("__")
         return col_name, value
 
     def _build_graph(self, data_path: Path, set_of_fds: SetOfFDs) -> nx.DiGraph:
-        """
-        Build the graph with nodes for unique (column, value) pairs
-        and edges based on functional dependencies.
-        Calculate quality for each edge in the graph and store as edge attributes.
+        """Build the FD pattern graph and score every edge (paper §3.2-§3.3).
+
+        Streams the input once to accumulate per-FD (LHS, RHS) pattern supports,
+        then adds one node per (column, value) and one edge per FD pattern, computing
+        each edge's §3.3 quality ``(support + Σ reachable support) / (reachable + 1)``.
+
+        Args:
+            data_path: Path to the CSV file containing the data.
+            set_of_fds: Parsed set of functional dependencies.
 
         Returns:
-            NetworkX DiGraph with column-value nodes and FD-based edges
+            NetworkX DiGraph with column-value nodes and quality-scored FD edges.
         """
         logger.debug("Starting graph construction")
         G: nx.DiGraph = nx.DiGraph()
@@ -172,15 +196,11 @@ class FDPatternGraph:
         }
         n_tuples: int = 0
         # Read only the FD columns (projection pushed into the reader).
-        for block in iter_table_batches(
-            data_path, columns=list(set_of_fds.unique_attributes)
-        ):
+        for block in iter_table_batches(data_path, columns=list(set_of_fds.unique_attributes)):
             n_tuples += block.height
             for fd, counts in pair_counts.items():
                 for lval, rval, count in (
-                    block.group_by(fd.lhs, fd.rhs, maintain_order=True)
-                    .len()
-                    .iter_rows()
+                    block.group_by(fd.lhs, fd.rhs, maintain_order=True).len().iter_rows()
                 ):
                     key: tuple = (lval, rval)
                     counts[key] = counts.get(key, 0) + count
@@ -194,7 +214,7 @@ class FDPatternGraph:
             # Get total LHS appearances: a real violation (same LHS -> two RHS) has LHS total 2,
             # and must be kept, a single pattern with count 3 can be discarded
             lhs_totals: dict = {}
-            for (lval, _rval), count in counts.items():
+            for (lval, _rval), _count in counts.items():
                 lhs_totals[lval] = lhs_totals.get(lval, 0) + 1
 
             # Check singleton FD patterns (LHS total < 2) during loop,
@@ -274,6 +294,7 @@ class FDPatternGraph:
         return G
 
     def _prune_edges(self) -> None:
+        """Drop marked (singleton-pattern) edges and shrink surviving edges to quality only."""
         # quality is now final; the repair only ever reads `quality` (see
         # choose_best_next_edge / get_edge_quality). Drop the per-edge scratch
         # attributes (support, back_edge, order, sum_support, n_reachable), keeping
@@ -297,15 +318,17 @@ class FDPatternGraph:
         )
 
     def get_edge_quality(self, from_node: str, to_node: str) -> float:
-        """
-        Get the quality of a specific edge.
+        """Return the §3.3 quality score of a specific edge.
 
         Args:
-            from_node: Source node ID
-            to_node: Target node ID
+            from_node: Source node ID.
+            to_node: Target node ID.
 
         Returns:
-            Quality score for the edge
+            Quality score for the edge.
+
+        Raises:
+            ValueError: If no edge from ``from_node`` to ``to_node`` exists.
         """
         if not self.graph.has_edge(from_node, to_node):
             raise ValueError(f"Edge from {from_node} to {to_node} does not exist")
@@ -313,16 +336,46 @@ class FDPatternGraph:
         return self.graph[from_node][to_node]["quality"]
 
     def get_node_info(self, node_id: str) -> dict:
-        """Get all stored information about a node."""
+        """Return the column and value decoded from a node ID.
+
+        Args:
+            node_id: Node identifier to decode.
+
+        Returns:
+            Dict with keys ``"column"`` and ``"value"``.
+        """
         col_name, value = self._parse_node_id(node_id)
         return {"column": col_name, "value": value}
 
     def has_node(self, col_name: str, value: str) -> bool:
-        """True if a (column, value) node exists in the graph."""
+        """Return True if a (column, value) node exists in the graph.
+
+        Args:
+            col_name: Column (attribute) name.
+            value: Cell value.
+
+        Returns:
+            True if the corresponding node is present.
+        """
         return self.graph.has_node(self._cell_node_id(col_name, value))
 
     def choose_best_next_edge(self, lhs: str, lval: str, rhs: str) -> tuple[str, str]:
-        """Choose best next edge given a LHS attribute and value, returns RHS attribute and value with the highest quality."""
+        """Select the highest-quality outgoing edge to the RHS attribute (paper §5.2, Edge_Selection).
+
+        Among edges from node ``(lhs, lval)`` to nodes on attribute ``rhs``, pick the
+        one with the greatest §3.3 quality; ties resolve to the first-inserted edge.
+
+        Args:
+            lhs: LHS attribute name.
+            lval: LHS value.
+            rhs: RHS attribute name to select a value for.
+
+        Returns:
+            Tuple of (rhs attribute, chosen rhs value).
+
+        Raises:
+            RuntimeError: If no edge to the RHS attribute exists from this node.
+        """
         logger.debug(f"Choosing best edge: {lhs}({lval}) -> {rhs}")
         current_node: str = self._cell_node_id(lhs, lval)
 
@@ -351,5 +404,5 @@ class FDPatternGraph:
         return result
 
     def clear(self) -> None:
-        """Clears the FD Pattern graph."""
+        """Empty the underlying graph to release memory after repair."""
         self.graph.clear()

@@ -1,3 +1,10 @@
+"""Horizon repair pipeline and CLI.
+
+Implements the pattern-preserving repair of paper §5.2 (Algorithm 1): repair each
+tuple one FD at a time in the traversal order, choosing RHS values that preserve
+frequent FD patterns, and stream the cleaned instance to disk.
+"""
+
 import argparse
 import json
 import logging
@@ -78,7 +85,25 @@ def repair_tuple(
     p_exp: PatternExpression,
     fd_pattern_graph: FDPatternGraph,
 ) -> None:
-    """Given a data frame as a dict, applies in-place repairs for tuple with index t and functional dependency fd."""
+    """Repair one cell in place for a single tuple and FD (paper §5.2, Algorithm 1).
+
+    Applies the three-branch repair cascade of Algorithm 1 for the RHS of ``fd`` on
+    tuple ``t``: (1) reuse a cached LHS->RHS mapping from the repair table (lines
+    11-13); (2) reuse the RHS value already fixed by an interacting FD in this
+    tuple's pattern expression (lines 14-17); (3) otherwise pick the best FDG edge
+    (lines 18-21). The chosen mapping is recorded and the cell overwritten.
+
+    Args:
+        columns: FD-touched columns of the current batch as dict-of-lists, mutated in place.
+        t: Row index of the tuple within the batch.
+        fd: Functional dependency whose RHS cell is repaired.
+        repair_table: Per-FD LHS->RHS mappings collected so far; updated in place.
+        p_exp: Pattern expression accumulating this tuple's chosen FD patterns.
+        fd_pattern_graph: FD pattern graph consulted when no prior mapping exists.
+
+    Returns:
+        None. ``columns``, ``repair_table`` and ``p_exp`` are mutated in place.
+    """
     lval: str = str(columns[fd.lhs][t])
     rval: str = str(columns[fd.rhs][t])
     existing_pattern: FDPattern | None = p_exp.attribute_in_expression(fd.rhs)
@@ -87,9 +112,7 @@ def repair_tuple(
         rval = repair_table[fd.index][lval]
         pattern: FDPattern = FDPattern(fd, lval, rval)
         p_exp.add_fd_pattern(pattern)
-        logger.debug(
-            f"Tuple {t}: Applied cached repair for {fd} (LHS={lval} -> RHS={rval})"
-        )
+        logger.debug(f"Tuple {t}: Applied cached repair for {fd} (LHS={lval} -> RHS={rval})")
     elif existing_pattern is not None:
         # RHS attribute is part of a previous FD, therefore use the same RHS value
         rval = existing_pattern.rval
@@ -105,9 +128,7 @@ def repair_tuple(
         pattern: FDPattern = FDPattern(fd, lval, rval)
         p_exp.add_fd_pattern(pattern)
         repair_table[fd.index][lval] = rval
-        logger.debug(
-            f"Tuple {t}: Applied graph-based repair for {fd} (LHS={lval} -> RHS={rval})"
-        )
+        logger.debug(f"Tuple {t}: Applied graph-based repair for {fd} (LHS={lval} -> RHS={rval})")
 
     # Apply repair in place
     columns[fd.rhs][t] = rval
@@ -122,10 +143,26 @@ def repair_dirty_data(
     n_rows: int | None = None,
     collect_pattern_expressions: bool = False,
 ) -> tuple[list[PatternExpression], float]:
-    """Repairs data under the given dirty data path, based on the given order and FD Pattern graph.
-    If n_rows is given, only repairs the first n_rows tuples.
-    Set collect_pattern_expressions=False to free each tuple's PatternExpression immediately when the lineage is not needed (e.g. runtime benchmarks).
-    Saves cleaned data under given cleaned data output path."""
+    """Repair a dirty table one tuple at a time and stream the result to disk (paper §5.2).
+
+    Streams the input in bounded batches, repairs every tuple by applying each FD in
+    ``ordered_fds`` via :func:`repair_tuple`, and writes each cleaned batch straight
+    out so memory stays O(batch) rather than O(dataset).
+
+    Args:
+        dirty_data_path: Path to the dirty input table.
+        cleaned_data_output_path: Path the cleaned CSV is written to.
+        ordered_fds: FDs in the traversal order from §5.1.
+        repair_table: Per-FD LHS->RHS mappings, seeded by the graph and extended here.
+        fd_pattern_graph: FD pattern graph used to select repairs.
+        n_rows: If given, repair only the first ``n_rows`` tuples.
+        collect_pattern_expressions: If True, retain each tuple's PatternExpression for
+            lineage; if False, free it immediately (e.g. runtime benchmarks).
+
+    Returns:
+        A tuple of (collected pattern expressions, elapsed repair time in seconds).
+        The list is empty when ``collect_pattern_expressions`` is False.
+    """
 
     # Compute repairs for dirty data
     pattern_expressions: list[PatternExpression] = []
@@ -134,12 +171,7 @@ def repair_dirty_data(
     # to Python lists per batch. Untouched columns ride along as compact Arrow
     # (~3-4x smaller than Python str lists) and are stitched back in at write time.
     fd_columns: list[str] = list(
-        {
-            col
-            for fd in ordered_fds
-            if not isinstance(fd.lhs, tuple)
-            for col in (fd.lhs, fd.rhs)
-        }
+        {col for fd in ordered_fds if not isinstance(fd.lhs, tuple) for col in (fd.lhs, fd.rhs)}
     )
 
     logger.info("Loading dirty data...")
@@ -163,9 +195,7 @@ def repair_dirty_data(
             # Per-cell df[t, col] reads on a Polars data frame and especially
             # df[t, col] = val writes rebuild whole Arrow columns (O(n) each),
             # making the loop O(n^2). dict-of-lists makes them O(1).
-            columns: dict[str, list[str]] = df.select(fd_columns).to_dict(
-                as_series=False
-            )
+            columns: dict[str, list[str]] = df.select(fd_columns).to_dict(as_series=False)
 
             # Iterate over tuples in batch and compute pattern expression for each
             for t in range(batch_size):
@@ -216,6 +246,24 @@ def run_horizon(
     enable_plotting: bool = False,
     collect_pattern_expressions: bool = False,
 ) -> None:
+    """Run the full Horizon pipeline for one dataset end to end.
+
+    Computes the FD traversal order (§5.1), builds the FD pattern graph (§3.2-§3.3),
+    repairs the dirty data (§5.2), and writes the cleaned table, timing statistics
+    and (optionally) pattern-expression lineage under ``output_dir``.
+
+    Args:
+        dataset_name: Name used to prefix output files.
+        dirty_data_path: Path to the dirty input table.
+        set_of_fds: Functional dependencies defined over the dataset.
+        output_dir: Directory the outputs are written to (created if absent).
+        n_rows: If given, repair only the first ``n_rows`` tuples.
+        enable_plotting: If True, save graph visualizations.
+        collect_pattern_expressions: If True, also write pattern-expression lineage.
+
+    Returns:
+        None. Results are written to files under ``output_dir``.
+    """
     # Create output directory
     if not output_dir.exists:
         logger.info(f"Creating output directory under {output_dir}")
@@ -229,6 +277,9 @@ def run_horizon(
 
     # Build FD pattern graph
     logger.info("Building FD pattern graph...")
+    # NOTE: positional call skips the `pruning` param: output_dir binds to `pruning`
+    # and enable_plotting binds to `output_dir`; harmless only because a Path is
+    # truthy, but plotting would save to the wrong path. Do not fix here.
     fd_pattern_graph: FDPatternGraph = FDPatternGraph(
         dirty_data_path, set_of_fds, dataset_name, output_dir, enable_plotting
     )
@@ -252,17 +303,15 @@ def run_horizon(
         "repair_time": repair_time,
         "total_time": fd_ordering_time + fd_pattern_graph._build_time + repair_time,
     }
-    stat_file = open(stat_output_path, "w", encoding="utf-8")
+    stat_file = open(stat_output_path, "w", encoding="utf-8")  # noqa: SIM115 (closed explicitly below)
     json.dump(repair_statistics, stat_file)
     stat_file.close()
     logger.info(f"Repair time statistics saved to {stat_output_path}")
 
     # Save pattern expressions as lineage
     if collect_pattern_expressions:
-        exp_output_path: Path = (
-            output_dir / f"{dataset_name}_final_pattern_expressions.txt"
-        )
-        exp_file = open(exp_output_path, "w", encoding="utf-8")
+        exp_output_path: Path = output_dir / f"{dataset_name}_final_pattern_expressions.txt"
+        exp_file = open(exp_output_path, "w", encoding="utf-8")  # noqa: SIM115 (closed explicitly below)
         exp_file.writelines("\n".join(f"{str(p_exp)}" for p_exp in pattern_expressions))
         exp_file.close()
         logger.info(f"Final pattern expressions saved to {exp_output_path}")
@@ -276,6 +325,22 @@ def main(
     enable_plotting: bool,
     collect_pattern_expressions: bool,
 ) -> None:
+    """Resolve inputs from CLI arguments and launch the Horizon pipeline.
+
+    Args:
+        dataset_dir: Directory holding the dataset and its FD definitions.
+        dirty_data_file: Dirty data filename relative to ``dataset_dir``.
+        output_dir: Directory the outputs are written to.
+        n_rows: If given, repair only the first ``n_rows`` tuples.
+        enable_plotting: If True, save graph visualizations.
+        collect_pattern_expressions: If True, also write pattern-expression lineage.
+
+    Returns:
+        None.
+
+    Raises:
+        ValueError: If the dirty data file does not exist.
+    """
     # Verify data path
     dirty_data_path: Path = dataset_dir / dirty_data_file
     if not dirty_data_path.exists():
@@ -289,9 +354,7 @@ def main(
 
     dataset_name: str = dataset_dir.name
 
-    logger.info(
-        f"Starting Horizon pipeline with dataset '{dataset_name}': {dataset_dir}"
-    )
+    logger.info(f"Starting Horizon pipeline with dataset '{dataset_name}': {dataset_dir}")
 
     run_horizon(
         dataset_name,

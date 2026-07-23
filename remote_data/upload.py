@@ -52,9 +52,7 @@ def upload_table(table: str, repo_id: str | None = None, src: Path = DATASETS) -
     return f"{repo}/{table}"
 
 
-def upload_tables(
-    tables: list[str], repo_id: str | None = None, src: Path = DATASETS
-) -> list[str]:
+def upload_tables(tables: list[str], repo_id: str | None = None, src: Path = DATASETS) -> list[str]:
     """Upload several tables. Returns their repo paths."""
     return [upload_table(t, repo_id, src) for t in tables]
 

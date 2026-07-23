@@ -73,9 +73,7 @@ def fetch_table(table: str, repo_id: str | None = None, dest: Path = DEST) -> Pa
     return out
 
 
-def fetch_tables(
-    tables: list[str], repo_id: str | None = None, dest: Path = DEST
-) -> list[Path]:
+def fetch_tables(tables: list[str], repo_id: str | None = None, dest: Path = DEST) -> list[Path]:
     """Download several tables. Returns their local paths."""
     return [fetch_table(t, repo_id, dest) for t in tables]
 
