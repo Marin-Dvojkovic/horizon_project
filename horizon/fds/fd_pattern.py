@@ -11,9 +11,7 @@ class FDPattern:
     patterns work as dict/set keys.
     """
 
-    def __init__(
-        self, fd: FunctionalDependency, lval: tuple | list | str, rval: str
-    ) -> None:
+    def __init__(self, fd: FunctionalDependency, lval: tuple | list | str, rval: str) -> None:
         """Initialise a pattern, normalising the LHS value to a tuple.
 
         Args:
@@ -50,11 +48,7 @@ class FDPattern:
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, FDPattern):
             return NotImplemented
-        return (
-            self._fd == other._fd
-            and self._lval == other._lval
-            and self._rval == other._rval
-        )
+        return self._fd == other._fd and self._lval == other._lval and self._rval == other._rval
 
     # required by __eq__; allows use in sets and as dict keys (e.g. fd in seen_fds)
     def __hash__(self) -> int:

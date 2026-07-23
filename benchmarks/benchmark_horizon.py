@@ -100,11 +100,7 @@ def find_datasets(all_datasets_dir: Path) -> list[Path]:
     if not all_datasets_dir.exists():
         raise ValueError(f"Directory {all_datasets_dir} does not exist!")
     return sorted(
-        [
-            dataset_path
-            for dataset_path in all_datasets_dir.iterdir()
-            if dataset_path.is_dir()
-        ]
+        [dataset_path for dataset_path in all_datasets_dir.iterdir() if dataset_path.is_dir()]
     )
 
 
@@ -144,16 +140,14 @@ def eval_run(
     build_fd_pattern_graph_time: float | None = None
     repair_time: float | None = None
     try:
-        with open(statistics_path, "r") as json_file:
+        with open(statistics_path) as json_file:
             data = json.load(json_file)
             total_time = data["total_time"]
             order_fds_time = data["order_fds_time"]
             build_fd_pattern_graph_time = data["build_fd_pattern_graph_time"]
             repair_time = data["repair_time"]
     except Exception:
-        print(
-            f"Could not read statistics file {statistics_path}. Continuing with measured time..."
-        )
+        print(f"Could not read statistics file {statistics_path}. Continuing with measured time...")
 
     # Add repair time and throughput to evaluation
     fixed_metrics: dict = {
@@ -243,7 +237,7 @@ def run_horizon_benchmark(
         )
         return []
     else:
-        line_count: int = sum(1 for line in open(fd_files[0], "r").readlines())
+        line_count: int = sum(1 for line in open(fd_files[0]).readlines())  # noqa: SIM115
         n_fds = line_count - 1 if fd_files[0].suffix == ".csv" else line_count
 
     # Run Horizon for each error type and rate
@@ -255,7 +249,7 @@ def run_horizon_benchmark(
             pf = pq.ParquetFile(dataset_path / dirty_data_file)
             total_rows = pf.metadata.num_rows
         else:
-            total_rows = sum(1 for line in open(dirty_data_path, "r").readlines()) - 1
+            total_rows = sum(1 for line in open(dirty_data_path).readlines()) - 1  # noqa: SIM115
 
         # Get dataset properties
         error_type: str | None = None
@@ -267,18 +261,12 @@ def run_horizon_benchmark(
             error_type, error_rate, repairability = m.groups()
 
         # Run experiment for different numbers of tuples
-        for n_tuples in range(
-            round(total_rows / 10), total_rows + 1, round(total_rows / 10)
-        ):
+        for n_tuples in range(round(total_rows / 10), total_rows + 1, round(total_rows / 10)):
             n_tuples_file: str = dirty_data_file
             # To build FD pattern graph on a subset of the data, create temporary csv
             if build_graph_on_subset:
-                base = pl.read_csv(
-                    dirty_data_path, n_rows=n_tuples, infer_schema_length=0
-                )
-                n_tuples_file = (
-                    f"{dirty_data_path.stem}_{n_tuples}{dirty_data_path.suffix}"
-                )
+                base = pl.read_csv(dirty_data_path, n_rows=n_tuples, infer_schema_length=0)
+                n_tuples_file = f"{dirty_data_path.stem}_{n_tuples}{dirty_data_path.suffix}"
                 base.write_csv(dataset_path / Path(n_tuples_file))
 
             # Create sub-directory for each dirty data file and number of tuples
@@ -320,9 +308,7 @@ def run_horizon_benchmark(
                     {
                         "dataset": dataset_name,
                         "error_type": error_type,
-                        "error_rate": int(error_rate) * 0.01
-                        if error_rate is not None
-                        else None,
+                        "error_rate": int(error_rate) * 0.01 if error_rate is not None else None,
                         "repairability": repairability,
                         "n_fds": n_fds,
                         "n_tuples": n_tuples,
@@ -367,9 +353,7 @@ def run_horizon_benchmark(
 
             # Write evaluation directly to results csv
             with open(output_csv_path, "a", newline="") as csv_file:
-                writer: csv.DictWriter = csv.DictWriter(
-                    csv_file, fieldnames=FIELD_NAMES
-                )
+                writer: csv.DictWriter = csv.DictWriter(csv_file, fieldnames=FIELD_NAMES)
                 writer.writerow(evaluation)
 
             # Cleanup: Delete temporary file
@@ -442,9 +426,7 @@ def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
         # Create plot for each error type, rate, and repairability
         eval_throughput: pl.DataFrame = (
             evals.sort("n_tuples")
-            .group_by(
-                ["error_type", "error_rate", "repairability"], maintain_order=True
-            )
+            .group_by(["error_type", "error_rate", "repairability"], maintain_order=True)
             .agg(pl.col("n_tuples"), pl.col("tuples_per_s"))
         )
 
@@ -455,9 +437,7 @@ def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
             plt.plot(row["n_tuples"], row["tuples_per_s"], ".-")
             plt.xticks(row["n_tuples"])
             if row["n_tuples"][0] > 1000000:
-                plt.gca().xaxis.set_major_formatter(
-                    ticker.FuncFormatter(millions_formatter)
-                )
+                plt.gca().xaxis.set_major_formatter(ticker.FuncFormatter(millions_formatter))
             plt.xlabel("Number of tuples")
             plt.ylabel("Throughput (tuples/s)")
             plt.grid()
@@ -466,8 +446,7 @@ def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
                 output_dir
                 / f"{row['error_type']}_{row['error_rate']}_{row['repairability']}_throughput_plot.png"
                 if row["repairability"] is not None
-                else output_dir
-                / f"{row['error_type']}_{row['error_rate']}_throughput_plot.png"
+                else output_dir / f"{row['error_type']}_{row['error_rate']}_throughput_plot.png"
             )
             plt.savefig(throughput_plot_path)
             plt.clf()
@@ -480,9 +459,7 @@ def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
         # Create plot for each error type, rate, and repairability
         eval_repair_time: pl.DataFrame = (
             evals.sort("n_tuples")
-            .group_by(
-                ["error_type", "error_rate", "repairability"], maintain_order=True
-            )
+            .group_by(["error_type", "error_rate", "repairability"], maintain_order=True)
             .agg(
                 pl.col("n_tuples"),
                 pl.col("order_fds_time") * 1000,
@@ -526,9 +503,7 @@ def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
                 "repair_time": "Applying repairs",
             }
             for key, label in sub_times.items():
-                bar = plt.bar(
-                    row["n_tuples"], row[key], width=width, label=label, bottom=bottom
-                )
+                bar = plt.bar(row["n_tuples"], row[key], width=width, label=label, bottom=bottom)
                 plt.bar_label(
                     bar,
                     labels=[round(value, 2) for value in row[key]],
@@ -537,9 +512,7 @@ def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
                 bottom = [sum(values) for values in zip(bottom, row[key], strict=True)]
             plt.xticks(row["n_tuples"])
             if row["n_tuples"][0] > 1000000:
-                plt.gca().xaxis.set_major_formatter(
-                    ticker.FuncFormatter(millions_formatter)
-                )
+                plt.gca().xaxis.set_major_formatter(ticker.FuncFormatter(millions_formatter))
             plt.xlabel("Number of tuples")
             plt.ylabel(f"Repair time ({ms_s_min})")
             plt.grid(axis="y")
@@ -549,22 +522,17 @@ def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
                 output_dir
                 / f"{row['error_type']}_{row['error_rate']}_{row['repairability']}_repair_time_plot.png"
                 if row["repairability"] is not None
-                else output_dir
-                / f"{row['error_type']}_{row['error_rate']}_repair_time_plot.png"
+                else output_dir / f"{row['error_type']}_{row['error_rate']}_repair_time_plot.png"
             )
             plt.savefig(repair_time_plot_path)
             plt.clf()
             plt.close()
 
             # Total time plots
-            plt.bar(
-                row["n_tuples"], row["total_time"], width=width * 0.8, edgecolor="black"
-            )
+            plt.bar(row["n_tuples"], row["total_time"], width=width * 0.8, edgecolor="black")
             plt.xticks(row["n_tuples"])
             if row["n_tuples"][0] > 1000000:
-                plt.gca().xaxis.set_major_formatter(
-                    ticker.FuncFormatter(millions_formatter)
-                )
+                plt.gca().xaxis.set_major_formatter(ticker.FuncFormatter(millions_formatter))
             plt.xlabel("Number of tuples")
             plt.ylabel(f"Total repair time ({ms_s_min})")
             plt.grid(axis="y")
@@ -573,8 +541,7 @@ def plot_dataset(evals: pl.DataFrame, output_dir: Path) -> None:
                 output_dir
                 / f"{row['error_type']}_{row['error_rate']}_{row['repairability']}_total_time_plot.png"
                 if row["repairability"] is not None
-                else output_dir
-                / f"{row['error_type']}_{row['error_rate']}_total_time_plot.png"
+                else output_dir / f"{row['error_type']}_{row['error_rate']}_total_time_plot.png"
             )
             plt.savefig(total_time_plot_path)
             plt.clf()

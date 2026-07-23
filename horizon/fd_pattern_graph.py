@@ -97,9 +97,7 @@ class FDPatternGraph:
                 node
                 for col_name in set_of_fds.unique_attributes
                 for node in [
-                    n
-                    for n in self.graph.nodes()
-                    if self._parse_node_id(n)[0] == col_name
+                    n for n in self.graph.nodes() if self._parse_node_id(n)[0] == col_name
                 ][:3]
             ]
             sub_g: nx.Graph = self.graph.subgraph(sub_g_nodes)
@@ -198,15 +196,11 @@ class FDPatternGraph:
         }
         n_tuples: int = 0
         # Read only the FD columns (projection pushed into the reader).
-        for block in iter_table_batches(
-            data_path, columns=list(set_of_fds.unique_attributes)
-        ):
+        for block in iter_table_batches(data_path, columns=list(set_of_fds.unique_attributes)):
             n_tuples += block.height
             for fd, counts in pair_counts.items():
                 for lval, rval, count in (
-                    block.group_by(fd.lhs, fd.rhs, maintain_order=True)
-                    .len()
-                    .iter_rows()
+                    block.group_by(fd.lhs, fd.rhs, maintain_order=True).len().iter_rows()
                 ):
                     key: tuple = (lval, rval)
                     counts[key] = counts.get(key, 0) + count
@@ -220,7 +214,7 @@ class FDPatternGraph:
             # Get total LHS appearances: a real violation (same LHS -> two RHS) has LHS total 2,
             # and must be kept, a single pattern with count 3 can be discarded
             lhs_totals: dict = {}
-            for (lval, _rval), count in counts.items():
+            for (lval, _rval), _count in counts.items():
                 lhs_totals[lval] = lhs_totals.get(lval, 0) + 1
 
             # Check singleton FD patterns (LHS total < 2) during loop,

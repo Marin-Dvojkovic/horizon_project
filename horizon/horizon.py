@@ -112,9 +112,7 @@ def repair_tuple(
         rval = repair_table[fd.index][lval]
         pattern: FDPattern = FDPattern(fd, lval, rval)
         p_exp.add_fd_pattern(pattern)
-        logger.debug(
-            f"Tuple {t}: Applied cached repair for {fd} (LHS={lval} -> RHS={rval})"
-        )
+        logger.debug(f"Tuple {t}: Applied cached repair for {fd} (LHS={lval} -> RHS={rval})")
     elif existing_pattern is not None:
         # RHS attribute is part of a previous FD, therefore use the same RHS value
         rval = existing_pattern.rval
@@ -130,9 +128,7 @@ def repair_tuple(
         pattern: FDPattern = FDPattern(fd, lval, rval)
         p_exp.add_fd_pattern(pattern)
         repair_table[fd.index][lval] = rval
-        logger.debug(
-            f"Tuple {t}: Applied graph-based repair for {fd} (LHS={lval} -> RHS={rval})"
-        )
+        logger.debug(f"Tuple {t}: Applied graph-based repair for {fd} (LHS={lval} -> RHS={rval})")
 
     # Apply repair in place
     columns[fd.rhs][t] = rval
@@ -175,12 +171,7 @@ def repair_dirty_data(
     # to Python lists per batch. Untouched columns ride along as compact Arrow
     # (~3-4x smaller than Python str lists) and are stitched back in at write time.
     fd_columns: list[str] = list(
-        {
-            col
-            for fd in ordered_fds
-            if not isinstance(fd.lhs, tuple)
-            for col in (fd.lhs, fd.rhs)
-        }
+        {col for fd in ordered_fds if not isinstance(fd.lhs, tuple) for col in (fd.lhs, fd.rhs)}
     )
 
     logger.info("Loading dirty data...")
@@ -204,9 +195,7 @@ def repair_dirty_data(
             # Per-cell df[t, col] reads on a Polars data frame and especially
             # df[t, col] = val writes rebuild whole Arrow columns (O(n) each),
             # making the loop O(n^2). dict-of-lists makes them O(1).
-            columns: dict[str, list[str]] = df.select(fd_columns).to_dict(
-                as_series=False
-            )
+            columns: dict[str, list[str]] = df.select(fd_columns).to_dict(as_series=False)
 
             # Iterate over tuples in batch and compute pattern expression for each
             for t in range(batch_size):
@@ -314,17 +303,15 @@ def run_horizon(
         "repair_time": repair_time,
         "total_time": fd_ordering_time + fd_pattern_graph._build_time + repair_time,
     }
-    stat_file = open(stat_output_path, "w", encoding="utf-8")
+    stat_file = open(stat_output_path, "w", encoding="utf-8")  # noqa: SIM115 (closed explicitly below)
     json.dump(repair_statistics, stat_file)
     stat_file.close()
     logger.info(f"Repair time statistics saved to {stat_output_path}")
 
     # Save pattern expressions as lineage
     if collect_pattern_expressions:
-        exp_output_path: Path = (
-            output_dir / f"{dataset_name}_final_pattern_expressions.txt"
-        )
-        exp_file = open(exp_output_path, "w", encoding="utf-8")
+        exp_output_path: Path = output_dir / f"{dataset_name}_final_pattern_expressions.txt"
+        exp_file = open(exp_output_path, "w", encoding="utf-8")  # noqa: SIM115 (closed explicitly below)
         exp_file.writelines("\n".join(f"{str(p_exp)}" for p_exp in pattern_expressions))
         exp_file.close()
         logger.info(f"Final pattern expressions saved to {exp_output_path}")
@@ -367,9 +354,7 @@ def main(
 
     dataset_name: str = dataset_dir.name
 
-    logger.info(
-        f"Starting Horizon pipeline with dataset '{dataset_name}': {dataset_dir}"
-    )
+    logger.info(f"Starting Horizon pipeline with dataset '{dataset_name}': {dataset_dir}")
 
     run_horizon(
         dataset_name,

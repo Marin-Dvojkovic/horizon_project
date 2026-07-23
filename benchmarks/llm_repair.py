@@ -52,9 +52,7 @@ def build_prompt(dirty: pl.DataFrame, fds: SetOfFDs) -> str:
     Returns:
         The full prompt string (rules, CSV table and output contract).
     """
-    fd_lines = "\n".join(
-        f"{', '.join(fd.lhs_attributes)} -> {fd.rhs}" for fd in fds
-    )
+    fd_lines = "\n".join(f"{', '.join(fd.lhs_attributes)} -> {fd.rhs}" for fd in fds)
     attrs = [c for c in dirty.columns if c in fds.unique_attributes]  # keep table order
     csv_text = dirty.select(attrs).with_row_index(_ROW).write_csv()
     return (
@@ -96,15 +94,23 @@ def run_claude(prompt: str, model: str = "sonnet", timeout: int = 600) -> dict:
     """
     claude = shutil.which("claude") or "claude"
     cmd = [
-        claude, "-p",
-        "--model", model,
-        "--output-format", "json",
-        "--allowedTools", "",  # empty allow-list: no tools, pure text answer
+        claude,
+        "-p",
+        "--model",
+        model,
+        "--output-format",
+        "json",
+        "--allowedTools",
+        "",  # empty allow-list: no tools, pure text answer
     ]
     try:
         proc = subprocess.run(
-            cmd, input=prompt, capture_output=True,
-            text=True, encoding="utf-8", timeout=timeout,
+            cmd,
+            input=prompt,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=timeout,
         )
     except subprocess.TimeoutExpired:
         return {"error": f"timeout after {timeout}s"}
@@ -265,8 +271,11 @@ def repair_one(
         edits, n_malformed = parse_edits(res["result"])
     except ValueError as e:
         return {
-            "status": "parse_error", "error": str(e), "secs": secs,
-            "usage": res.get("usage"), "cost": res.get("cost"),
+            "status": "parse_error",
+            "error": str(e),
+            "secs": secs,
+            "usage": res.get("usage"),
+            "cost": res.get("cost"),
         }
 
     cleaned, n_skipped = apply_edits(dirty, edits)

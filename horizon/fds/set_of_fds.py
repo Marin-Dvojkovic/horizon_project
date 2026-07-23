@@ -5,7 +5,7 @@ attributes (§4.2), and source attributes (bound and never an RHS) — and keeps
 indices unique. Assumed minimal and in canonical form per §3.1.
 """
 
-from typing import Iterator
+from collections.abc import Iterator
 
 from .fd import FunctionalDependency
 
@@ -46,9 +46,7 @@ class SetOfFDs:
                 fd.index = i
         else:
             self._set_of_fds = []
-        self._bound_attributes = (
-            bound_attributes if bound_attributes is not None else set()
-        )
+        self._bound_attributes = bound_attributes if bound_attributes is not None else set()
         self._source_attributes = (
             set(
                 attribute
@@ -113,9 +111,7 @@ class SetOfFDs:
         new_index: int = len(self._set_of_fds)
         fd.index = new_index
         self._set_of_fds.append(fd)
-        self._unique_attributes.update(
-            set(attribute for attribute in fd.get_attributes())
-        )
+        self._unique_attributes.update(set(attribute for attribute in fd.get_attributes()))
 
     def as_tuple_list(self) -> list[tuple]:
         """Return the FDs as a list of (lhs, rhs) tuples.

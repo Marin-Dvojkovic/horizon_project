@@ -10,12 +10,11 @@ Provides consistent logging setup across all modules with:
 import logging
 import logging.handlers
 from pathlib import Path
-from typing import Optional
 
 
 def setup_logging(
     log_level: int = logging.INFO,
-    log_file: Optional[Path] = None,
+    log_file: Path | None = None,
     log_dir: Path = Path("logs"),
 ) -> logging.Logger:
     """
@@ -50,7 +49,9 @@ def setup_logging(
 
     # File handler (logs everything)
     file_handler = logging.handlers.RotatingFileHandler(
-        log_file, maxBytes=10485760, backupCount=5  # 10MB per file, keep 5 backups
+        log_file,
+        maxBytes=10485760,
+        backupCount=5,  # 10MB per file, keep 5 backups
     )
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(log_format)

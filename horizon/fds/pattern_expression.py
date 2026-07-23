@@ -4,7 +4,7 @@ A repaired tuple is a composition (the ▷ operator) of the FD patterns chased f
 it; this container holds that ordered chain and records the tuple it belongs to.
 """
 
-from typing import Iterator
+from collections.abc import Iterator
 
 from .fd_pattern import FDPattern
 
@@ -34,9 +34,7 @@ class PatternExpression:
         return self._tuple_index
 
     def __repr__(self) -> str:
-        joined_patterns: str = " ▷ ".join(
-            str(fd_pattern) for fd_pattern in self._fd_patterns
-        )
+        joined_patterns: str = " ▷ ".join(str(fd_pattern) for fd_pattern in self._fd_patterns)
         return f"t{self._tuple_index}: {joined_patterns}"
 
     def __eq__(self, other: object) -> bool:

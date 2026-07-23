@@ -19,9 +19,7 @@ set_of_fds: dict[str, SetOfFDs] = {
             FunctionalDependency("service_area", "provider_area_id", 3),
         ]
     ),
-    "adult_smoking_prevalence": SetOfFDs(
-        [FunctionalDependency("yearvalue", "comparison", 0)]
-    ),
+    "adult_smoking_prevalence": SetOfFDs([FunctionalDependency("yearvalue", "comparison", 0)]),
     "shared_it_support_services": SetOfFDs(
         [
             FunctionalDependency("years", "historical_data"),
@@ -207,9 +205,9 @@ def build_fd_pattern_graph_test(dataset_name: str) -> None:
 
     # Assert correct qualities
     for from_node, to_node, correct_quality in correct_qualities[dataset_name]:
-        assert round(
-            fd_pattern_graph.get_edge_quality(from_node, to_node), 4
-        ) == pytest.approx(correct_quality)
+        assert round(fd_pattern_graph.get_edge_quality(from_node, to_node), 4) == pytest.approx(
+            correct_quality
+        )
 
     # Assert correct number of edges
     assert fd_pattern_graph.number_of_edges == len(correct_qualities[dataset_name])
@@ -232,14 +230,14 @@ def build_fd_pattern_graph_test(dataset_name: str) -> None:
     # Assert correct qualities
     for from_node, to_node, correct_quality in correct_qualities[dataset_name]:
         if (from_node, to_node, correct_quality) not in pruned_qualities[dataset_name]:
-            assert round(
-                fd_pattern_graph.get_edge_quality(from_node, to_node), 4
-            ) == pytest.approx(correct_quality)
+            assert round(fd_pattern_graph.get_edge_quality(from_node, to_node), 4) == pytest.approx(
+                correct_quality
+            )
 
     # Assert correct number of edges
-    assert fd_pattern_graph.number_of_edges == len(
-        correct_qualities[dataset_name]
-    ) - len(pruned_qualities[dataset_name])
+    assert fd_pattern_graph.number_of_edges == len(correct_qualities[dataset_name]) - len(
+        pruned_qualities[dataset_name]
+    )
 
     # Assert correct pruned repair table
     assert fd_pattern_graph.repair_table == correct_pruned_repair_table[dataset_name]

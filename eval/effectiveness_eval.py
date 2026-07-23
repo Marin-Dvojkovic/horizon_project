@@ -92,9 +92,7 @@ def repair_counts(
     return {"n_dirty": n_dirty, "n_repaired": n_repaired, "n_correct": n_correct}
 
 
-def evaluate_repair(
-    clean: pl.DataFrame, dirty: pl.DataFrame, cleaned: pl.DataFrame
-) -> dict:
+def evaluate_repair(clean: pl.DataFrame, dirty: pl.DataFrame, cleaned: pl.DataFrame) -> dict:
     """Score repair effectiveness (§6.1) over three aligned tables in one call.
 
     Single entry point for the notebook: counts dirty/repaired/correct cells
@@ -158,15 +156,10 @@ def lazy_repair_counts(
     # Iterate in batches over clean, dirty, and cleaned lazy frames
     batch_size: int = 1000
     for clean_df, dirty_df, cleaned_df in zip(
-        clean.collect_batches(
-            maintain_order=True, engine="streaming", chunk_size=batch_size
-        ),
-        dirty.collect_batches(
-            maintain_order=True, engine="streaming", chunk_size=batch_size
-        ),
-        cleaned.collect_batches(
-            maintain_order=True, engine="streaming", chunk_size=batch_size
-        ),
+        clean.collect_batches(maintain_order=True, engine="streaming", chunk_size=batch_size),
+        dirty.collect_batches(maintain_order=True, engine="streaming", chunk_size=batch_size),
+        cleaned.collect_batches(maintain_order=True, engine="streaming", chunk_size=batch_size),
+        strict=False,
     ):
         for c in columns:
             error = dirty_df[c].ne_missing(clean_df[c])
@@ -179,9 +172,7 @@ def lazy_repair_counts(
     return {"n_dirty": n_dirty, "n_repaired": n_repaired, "n_correct": n_correct}
 
 
-def lazy_evaluate_repair(
-    clean: pl.LazyFrame, dirty: pl.LazyFrame, cleaned: pl.LazyFrame
-) -> dict:
+def lazy_evaluate_repair(clean: pl.LazyFrame, dirty: pl.LazyFrame, cleaned: pl.LazyFrame) -> dict:
     """Score effectiveness like ``evaluate_repair`` but over LazyFrames.
 
     Args:

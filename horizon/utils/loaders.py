@@ -7,8 +7,8 @@ convention so FD attribute names and table columns line up.
 
 import re
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 import polars as pl
 from fds.fd import FunctionalDependency
@@ -70,9 +70,7 @@ class CSVFDLoader(FDLoader):
         for i, row in enumerate(df.iter_rows()):
             # TODO: drop the ";"-between-every-char workaround for corrupted fds.csv — unnecessary, ugly
             # composite LHS is ";"-separated; lowercase to match load_table's columns
-            lhs: tuple[str] = tuple(
-                attr.strip().lower() for attr in str(row[0]).split(";")
-            )
+            lhs: tuple[str] = tuple(attr.strip().lower() for attr in str(row[0]).split(";"))
             rhs: str = str(row[1]).strip().lower()
             fds.append(FunctionalDependency(lhs, rhs, i))
 
@@ -88,9 +86,7 @@ class TXTFDLoader(FDLoader):
     are represented by column indices and a separator (e.g., 1 -> 5).
     """
 
-    def __init__(
-        self, columns_or_path: list[str] | Path, separator: str = "->"
-    ) -> None:
+    def __init__(self, columns_or_path: list[str] | Path, separator: str = "->") -> None:
         """Initialise the loader with column names and an FD separator.
 
         Args:
@@ -132,28 +128,20 @@ class TXTFDLoader(FDLoader):
         """
         # Read only the header (no rows needed)
         try:
-            df: pl.DataFrame = pl.read_csv(
-                str(columns_csv_path), n_rows=0, infer_schema=False
-            )
+            df: pl.DataFrame = pl.read_csv(str(columns_csv_path), n_rows=0, infer_schema=False)
             # Remove data types in brackets
             return [re.sub(r"\(.*?\)", "", column_name) for column_name in df.columns]
         except Exception:
             # Fallback: try reading full file then columns
             try:
-                df: pl.DataFrame = pl.read_csv(
-                    str(columns_csv_path), infer_schema=False
-                )
+                df: pl.DataFrame = pl.read_csv(str(columns_csv_path), infer_schema=False)
                 # Remove data types in brackets
-                return [
-                    re.sub(r"\(.*?\)", "", column_name) for column_name in df.columns
-                ]
+                return [re.sub(r"\(.*?\)", "", column_name) for column_name in df.columns]
             except Exception as e:
-                logger.error(
-                    f"Could not read {columns_csv_path}. Failed with error: {e}"
-                )
+                logger.error(f"Could not read {columns_csv_path}. Failed with error: {e}")
                 raise RuntimeError(
                     f"Could not read {columns_csv_path}. Failed with error: {e}"
-                )
+                ) from e
 
     def parse_line(self, line) -> tuple[list[str], str] | None:
         """Parse one TXT line into LHS/RHS column indices.
@@ -168,9 +156,7 @@ class TXTFDLoader(FDLoader):
         parts = line.split(self._separator)
         if len(parts) != 2:
             return None
-        lhs_indices: list[str] = [
-            s.strip() for s in parts[0].strip().split(",") if s.strip()
-        ]
+        lhs_indices: list[str] = [s.strip() for s in parts[0].strip().split(",") if s.strip()]
         rhs_index: str = parts[1].strip()
         return lhs_indices, rhs_index
 
@@ -190,7 +176,7 @@ class TXTFDLoader(FDLoader):
 
         colnames: list[str] = self._column_names
 
-        with open(source, "r", encoding="utf-8") as f:
+        with open(source, encoding="utf-8") as f:
             lines = f.readlines()
         logger.debug(f"Loaded TXT with {len(lines)} rows")
 
@@ -339,10 +325,7 @@ def load_table(
     # Remove data types in brackets
     # Lowercase column names to match the casing convention in the FD loaders.
     lf = lf.rename(
-        {
-            c: re.sub(r"\(.*?\)", "", c.strip().lower())
-            for c in lf.collect_schema().names()
-        }
+        {c: re.sub(r"\(.*?\)", "", c.strip().lower()) for c in lf.collect_schema().names()}
     )
 
     if columns is not None:
@@ -390,10 +373,7 @@ def lazy_load_table(
     # Remove data types in brackets
     # Lowercase column names to match the casing convention in the FD loaders.
     lf = lf.rename(
-        {
-            c: re.sub(r"\(.*?\)", "", c.strip().lower())
-            for c in lf.collect_schema().names()
-        }
+        {c: re.sub(r"\(.*?\)", "", c.strip().lower()) for c in lf.collect_schema().names()}
     )
 
     if columns is not None:
@@ -452,7 +432,7 @@ def iter_table_batches(
 
     # Read the header once so every column is forced to Utf8 (matching _scan_csv,
     # which uses infer_schema_length=0) and names are lowercased like the lazy path.
-    with open(source, "r", encoding="utf-8", newline="") as header_file:
+    with open(source, encoding="utf-8", newline="") as header_file:
         header: list[str] = next(_csv.reader(header_file))
 
     # Project to `columns` if requested: pyarrow parses only the included columns.
@@ -460,20 +440,12 @@ def iter_table_batches(
     kept: list[str] = header
     if columns is not None:
         wanted: set[str] = {re.sub(r"\(.*?\)", "", c.strip().lower()) for c in columns}
-        kept = [
-            name
-            for name in header
-            if re.sub(r"\(.*?\)", "", name.strip().lower()) in wanted
-        ]
-        missing: set[str] = wanted - {
-            re.sub(r"\(.*?\)", "", name.strip().lower()) for name in kept
-        }
+        kept = [name for name in header if re.sub(r"\(.*?\)", "", name.strip().lower()) in wanted]
+        missing: set[str] = wanted - {re.sub(r"\(.*?\)", "", name.strip().lower()) for name in kept}
         if missing:
             raise ValueError(f"columns not found: {sorted(missing)}")
         include_columns = kept
-    rename: dict[str, str] = {
-        name: re.sub(r"\(.*?\)", "", name.strip().lower()) for name in kept
-    }
+    rename: dict[str, str] = {name: re.sub(r"\(.*?\)", "", name.strip().lower()) for name in kept}
 
     reader = pa_csv.open_csv(
         str(source),

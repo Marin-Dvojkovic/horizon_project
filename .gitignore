@@ -46,6 +46,7 @@ horizon/fdgnotebook.ipynb
 # Claude Code
 claude.md
 harness/
+.claude/
 
 # Misc
 *.tmp

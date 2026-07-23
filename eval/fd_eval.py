@@ -14,9 +14,7 @@ import polars as pl
 from horizon.fds.fd import FunctionalDependency
 
 
-def fd_lhs_redundancy(
-    df: pl.DataFrame, fds: list[FunctionalDependency]
-) -> dict[tuple, float]:
+def fd_lhs_redundancy(df: pl.DataFrame, fds: list[FunctionalDependency]) -> dict[tuple, float]:
     """Generalise ``column_redundancy`` to each FD's LHS as a composite key.
 
     For a singleton LHS this matches ``column_redundancy``; for a composite LHS
@@ -37,9 +35,7 @@ def fd_lhs_redundancy(
             continue
         sub = df.select(list(fd.lhs_attributes)).drop_nulls()
         n = sub.height
-        out[fd.lhs_attributes] = (
-            0.0 if n <= 1 else math.log(n / sub.n_unique()) / math.log(n)
-        )
+        out[fd.lhs_attributes] = 0.0 if n <= 1 else math.log(n / sub.n_unique()) / math.log(n)
     return out
 
 
@@ -157,9 +153,7 @@ def violation_clusters(df: pl.DataFrame, fd: FunctionalDependency) -> pl.DataFra
         LHS then count descending so the dominant RHS in each group leads.
     """
     sub = df.drop_nulls()
-    counts = sub.group_by(list(fd.lhs_attributes) + [fd.rhs]).agg(
-        pl.len().alias("count")
-    )
+    counts = sub.group_by(list(fd.lhs_attributes) + [fd.rhs]).agg(pl.len().alias("count"))
     violating_keys = (
         counts.group_by(list(fd.lhs_attributes))
         .agg(pl.col(fd.rhs).n_unique().alias("_n_rhs"))

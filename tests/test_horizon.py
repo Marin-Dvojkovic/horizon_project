@@ -21,9 +21,7 @@ set_of_fds: dict[str, SetOfFDs] = {
             FunctionalDependency("service_area", "provider_area_id", 3),
         ]
     ),
-    "adult_smoking_prevalence": SetOfFDs(
-        [FunctionalDependency("yearvalue", "comparison", 0)]
-    ),
+    "adult_smoking_prevalence": SetOfFDs([FunctionalDependency("yearvalue", "comparison", 0)]),
     "budget_presentation_award": get_fds(
         TEST_DATA_DIR / "budget_presentation_award" / "fds.txt",
         [

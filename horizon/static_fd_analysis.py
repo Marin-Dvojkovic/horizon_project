@@ -62,9 +62,7 @@ class FDGraph:
         Returns:
             An igraph Graph whose edges carry the originating ``fd_index``.
         """
-        logger.info(
-            f"Building FD graph from {len(self._set_of_fds)} functional dependencies"
-        )
+        logger.info(f"Building FD graph from {len(self._set_of_fds)} functional dependencies")
         # Create iGraph from tuple list and visualize
         g: Graph = Graph.TupleList(
             [(*fd, i) for i, fd in enumerate(self._set_of_fds.as_tuple_list())],
@@ -77,8 +75,7 @@ class FDGraph:
                 (single, multiple)
                 for multiple in g.vs
                 for single in multiple["name"]
-                if isinstance(multiple["name"], tuple)
-                and len(g.vs.select(name_eq=single)) != 0
+                if isinstance(multiple["name"], tuple) and len(g.vs.select(name_eq=single)) != 0
             ]
         )
 
@@ -107,9 +104,7 @@ class FDGraph:
             combine_edges={"fd_index": lambda fd_indices: fd_indices},
         )
 
-        logger.info(
-            f"SCC graph built: {scc_g.vcount()} components and {scc_g.ecount()} edges"
-        )
+        logger.info(f"SCC graph built: {scc_g.vcount()} components and {scc_g.ecount()} edges")
         return scc_g
 
     def _order_subg(
@@ -139,9 +134,7 @@ class FDGraph:
         out_degrees: list[int] = sub_g.outdegree()
 
         # Check requirements for Eulerian cycle/tour
-        uneven_vertices: list[int] = [
-            i for i in range(n) if out_degrees[i] != in_degrees[i]
-        ]
+        uneven_vertices: list[int] = [i for i in range(n) if out_degrees[i] != in_degrees[i]]
         if len(uneven_vertices) not in [0, 2]:
             logger.error(
                 "Not possible to find a Eulerian cycle/tour and therefore not possible to order FDs."
@@ -176,7 +169,7 @@ class FDGraph:
             in_degrees[tour_start_v] += 1
 
         traversed_edge_count: list[int] = [0 for i in range(n)]
-        visited: list[bool] = [True if i == start_v else False for i in range(n)]
+        visited: list[bool] = [i == start_v for i in range(n)]
         skipped: list[bool] = [False for i in range(n)]
         predecessor: list[int] = [0 for i in range(n)]
 
@@ -216,9 +209,7 @@ class FDGraph:
                 rhs_v = sub_g.neighbors(lhs_v, mode="out")[i - 1]
 
             # Write traversed edge to sub-order
-            fd_index: int | None = sub_g.es.find(_source=lhs_v, _target=rhs_v)[
-                "fd_index"
-            ]
+            fd_index: int | None = sub_g.es.find(_source=lhs_v, _target=rhs_v)["fd_index"]
             # Skip artificial edge
             if fd_index is not None:
                 # Add order to FD and append to sub-order
@@ -230,9 +221,7 @@ class FDGraph:
 
         return sub_order
 
-    def _get_topological_sorting(
-        self, g: Graph, order_counter: int
-    ) -> list[FunctionalDependency]:
+    def _get_topological_sorting(self, g: Graph, order_counter: int) -> list[FunctionalDependency]:
         """Topologically order the FDs of one SCC-graph component (paper §4.2, §5.1).
 
         Runs Kahn's BFS-based topological sort; in-degree-0 vertices seed the bound
@@ -276,8 +265,7 @@ class FDGraph:
                 # Start with last seen vertex, if possible
                 start_index: int = (
                     sub_g.vs.find(name=ordered_fds[-1].rhs).index
-                    if len(ordered_fds) > 0
-                    and len(sub_g.vs.select(name=ordered_fds[-1].rhs)) == 1
+                    if len(ordered_fds) > 0 and len(sub_g.vs.select(name=ordered_fds[-1].rhs)) == 1
                     else 0
                 )
                 sub_order: list[FunctionalDependency] = self._order_subg(
@@ -320,7 +308,7 @@ class FDGraph:
         order_counter: int = 0
         for sub_g in self._scc_g.decompose(mode="weak"):
             ordered_fds.extend(self._get_topological_sorting(sub_g, order_counter))
-            order_counter += 1
+            order_counter += 1  # noqa: SIM113 (counter is passed into a helper, not a plain enumerate)
 
         if len(ordered_fds) != len(self._set_of_fds):
             logger.error(
@@ -408,9 +396,7 @@ class FDGraph:
 
         # Visualize SCCG
         logger.debug("Saving SCC graph visualization")
-        plt.figure(
-            figsize=(max(7, self._scc_g.vcount() / 2), max(7, self._scc_g.vcount() / 2))
-        )
+        plt.figure(figsize=(max(7, self._scc_g.vcount() / 2), max(7, self._scc_g.vcount() / 2)))
 
         ig.plot(
             self._scc_g,
@@ -448,9 +434,7 @@ class FDGraph:
         nodes: list[dict] = [
             {
                 "id": v.index,
-                "label": ", ".join(v["name"])
-                if isinstance(v["name"], tuple)
-                else v["name"],
+                "label": ", ".join(v["name"]) if isinstance(v["name"], tuple) else v["name"],
             }
             for v in g.vs
         ]
@@ -531,14 +515,10 @@ def get_ordered_fds(
 
     # Mark cyclic FDs (used later to skip back-edges in FD pattern graph quality computation)
     non_cyclic_fds: set = set(
-        [
-            fd_index
-            for v in set_of_fds.bound_attributes
-            for fd_index in fd_graph.dfs_tree(v)
-        ]
+        [fd_index for v in set_of_fds.bound_attributes for fd_index in fd_graph.dfs_tree(v)]
     )
     for i in range(len(set_of_fds)):
-        set_of_fds[i].cyclic = False if i in non_cyclic_fds else True
+        set_of_fds[i].cyclic = i not in non_cyclic_fds
 
     logger.debug([f"{str(fd)}: {fd.cyclic}" for fd in set_of_fds])
 
@@ -555,9 +535,7 @@ def get_ordered_fds(
         try:
             output_dir.mkdir(parents=True, exist_ok=True)
             graph_json = output_dir / f"{dataset_name}_graph.json"
-            graph_json.write_text(
-                json.dumps(fd_graph.graph_data(), indent=2), encoding="utf-8"
-            )
+            graph_json.write_text(json.dumps(fd_graph.graph_data(), indent=2), encoding="utf-8")
             logger.debug(f"Saved graph data to {graph_json}")
         except Exception as e:
             logger.warning(f"Could not export graph data: {e}")

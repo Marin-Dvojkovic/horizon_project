@@ -2,6 +2,6 @@
 Horizon utility modules.
 """
 
-from .logging_config import setup_logging, get_logger
+from .logging_config import get_logger, setup_logging
 
 __all__ = ["setup_logging", "get_logger"]
