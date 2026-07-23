@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1320 400" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <!-- title -->
+  <text x="30" y="46" font-size="26" font-weight="700" fill="#0f172a">Horizon repair pipeline</text>
+  <text x="30" y="72" font-size="15" fill="#64748b">FD-driven data cleaning &#8212; dirty table + FDs in, cleaned table out (Rezig et al., VLDB 2021)</text>
+
+  <!-- arrows (drawn first, behind boxes) -->
+  <line x1="230" y1="205" x2="298" y2="205" stroke="#94a3b8" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <line x1="495" y1="205" x2="563" y2="205" stroke="#94a3b8" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <line x1="760" y1="205" x2="828" y2="205" stroke="#94a3b8" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <line x1="1025" y1="205" x2="1093" y2="205" stroke="#94a3b8" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+  <!-- Box 1: Inputs -->
+  <g>
+    <rect x="30" y="120" width="200" height="170" rx="14" fill="#eef2ff" stroke="#4f46e5" stroke-width="2"/>
+    <circle cx="130" cy="152" r="17" fill="#4f46e5"/>
+    <text x="130" y="158" font-size="17" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+    <text x="130" y="200" font-size="19" font-weight="700" fill="#1e1b4b" text-anchor="middle">Inputs</text>
+    <text x="130" y="226" font-size="13" fill="#475569" text-anchor="middle">dirty table + FDs</text>
+    <text x="130" y="245" font-size="13" fill="#475569" text-anchor="middle">loaded as strings</text>
+    <text x="130" y="274" font-size="12" font-weight="600" fill="#4f46e5" text-anchor="middle">load_fds()</text>
+  </g>
+
+  <!-- Box 2: Order FDs -->
+  <g>
+    <rect x="295" y="120" width="200" height="170" rx="14" fill="#ecfeff" stroke="#0891b2" stroke-width="2"/>
+    <circle cx="395" cy="152" r="17" fill="#0891b2"/>
+    <text x="395" y="158" font-size="17" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+    <text x="395" y="200" font-size="19" font-weight="700" fill="#083344" text-anchor="middle">Order FDs</text>
+    <text x="395" y="226" font-size="13" fill="#475569" text-anchor="middle">static analysis:</text>
+    <text x="395" y="245" font-size="13" fill="#475569" text-anchor="middle">SCC + topo sort</text>
+    <text x="395" y="274" font-size="12" font-weight="600" fill="#0891b2" text-anchor="middle">&#167;4&#8211;5.1</text>
+  </g>
+
+  <!-- Box 3: FD Pattern Graph -->
+  <g>
+    <rect x="560" y="120" width="200" height="170" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
+    <circle cx="660" cy="152" r="17" fill="#7c3aed"/>
+    <text x="660" y="158" font-size="17" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+    <text x="660" y="193" font-size="18" font-weight="700" fill="#2e1065" text-anchor="middle">FD Pattern</text>
+    <text x="660" y="214" font-size="18" font-weight="700" fill="#2e1065" text-anchor="middle">Graph</text>
+    <text x="660" y="240" font-size="13" fill="#475569" text-anchor="middle">value graph,</text>
+    <text x="660" y="258" font-size="13" fill="#475569" text-anchor="middle">quality-weighted</text>
+    <text x="660" y="280" font-size="12" font-weight="600" fill="#7c3aed" text-anchor="middle">&#167;3.2&#8211;3.3</text>
+  </g>
+
+  <!-- Box 4: Repair Tuples -->
+  <g>
+    <rect x="825" y="120" width="200" height="170" rx="14" fill="#fff7ed" stroke="#ea580c" stroke-width="2"/>
+    <circle cx="925" cy="152" r="17" fill="#ea580c"/>
+    <text x="925" y="158" font-size="17" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+    <text x="925" y="200" font-size="19" font-weight="700" fill="#7c2d12" text-anchor="middle">Repair Tuples</text>
+    <text x="925" y="226" font-size="13" fill="#475569" text-anchor="middle">stream + pick the</text>
+    <text x="925" y="245" font-size="13" fill="#475569" text-anchor="middle">best (max-quality) edge</text>
+    <text x="925" y="274" font-size="12" font-weight="600" fill="#ea580c" text-anchor="middle">&#167;5.2</text>
+  </g>
+
+  <!-- Box 5: Cleaned Data -->
+  <g>
+    <rect x="1090" y="120" width="200" height="170" rx="14" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/>
+    <circle cx="1190" cy="152" r="17" fill="#16a34a"/>
+    <text x="1190" y="158" font-size="17" font-weight="700" fill="#ffffff" text-anchor="middle">5</text>
+    <text x="1190" y="200" font-size="19" font-weight="700" fill="#14532d" text-anchor="middle">Cleaned Data</text>
+    <text x="1190" y="226" font-size="13" fill="#475569" text-anchor="middle">cleaned_data.csv</text>
+    <text x="1190" y="245" font-size="13" fill="#475569" text-anchor="middle">+ stats, lineage</text>
+    <text x="1190" y="274" font-size="12" font-weight="600" fill="#16a34a" text-anchor="middle">output</text>
+  </g>
+
+  <!-- footer note -->
+  <text x="660" y="340" font-size="13" fill="#94a3b8" text-anchor="middle">One entry point: run_horizon() &#8212; linear-time, streaming, scales to millions of rows</text>
+</svg>

@@ -17,6 +17,10 @@ jobs:
           version: "0.11.19"
       - name: Install the project
         run: uv sync --locked --all-extras --dev
+      - name: Lint with ruff
+        run: |
+          uv run ruff check
+          uv run ruff format --check
       - name: Run tests
         run: |
           export PYTHONPATH=horizon/

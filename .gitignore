@@ -26,6 +26,9 @@ env/
 htmlcov/
 .tox/
 
+# Linting
+.ruff_cache/
+
 # Editors & OS
 .vscode/
 .idea/
