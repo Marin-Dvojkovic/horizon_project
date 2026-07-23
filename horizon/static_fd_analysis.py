@@ -1,3 +1,10 @@
+"""Static analysis of the FD set: boundness and traversal order.
+
+Builds the FD graph and its SCC graph, then derives an FD traversal order via
+topological sorting over the SCC DAG (paper §5.1) and identifies bound/free (and
+source) attributes (§4.2). Cyclic SCCs are ordered with an Eulerian tour.
+"""
+
 import json
 import time
 from collections import deque
@@ -17,6 +24,12 @@ ig.config["plotting.backend"] = "matplotlib"
 
 
 class FDGraph:
+    """Attribute-level FD graph and its strongly-connected-component graph (paper §5.1).
+
+    Wraps the FD set as a directed graph over attributes, together with the SCC
+    graph (a DAG) used to compute the FD traversal order and attribute boundness.
+    """
+
     # Class variables
     _set_of_fds: SetOfFDs
     _fd_g: Graph
@@ -27,6 +40,14 @@ class FDGraph:
         self,
         set_of_fds: SetOfFDs,
     ) -> None:
+        """Build the FD graph and its SCC graph from a set of FDs.
+
+        Args:
+            set_of_fds: Functional dependencies to analyse.
+
+        Returns:
+            None.
+        """
         self._set_of_fds = set_of_fds
 
         # Build FD graph
@@ -35,8 +56,12 @@ class FDGraph:
         # Turn FD graph into SCCG
         self._scc_g = self._find_strongly_connected_components()
 
-    # Build FD graph
     def _build_fd_graph(self) -> Graph:
+        """Build the directed attribute graph with one edge per FD.
+
+        Returns:
+            An igraph Graph whose edges carry the originating ``fd_index``.
+        """
         logger.info(
             f"Building FD graph from {len(self._set_of_fds)} functional dependencies"
         )
@@ -60,10 +85,13 @@ class FDGraph:
         logger.info(f"FD graph built: {g.vcount()} vertices and {g.ecount()} edges")
         return g
 
-    # Find strongly connected components and build SCC graph
     def _find_strongly_connected_components(self) -> Graph:
-        """Finds strongly connected components and builds SCC graph."""
+        """Find strongly connected components and build the SCC graph (paper §5.1).
 
+        Returns:
+            The SCC graph (a DAG), with component attribute names and per-edge
+            ``fd_index`` lists preserved.
+        """
         logger.info("Finding strongly connected components...")
         # Compute components
         components: ig.VertexClustering = Graph.components(self._fd_g)
@@ -87,8 +115,22 @@ class FDGraph:
     def _order_subg(
         self, sub_g: Graph, start_v: int, order_counter: int
     ) -> list[FunctionalDependency]:
-        """Implements Hierholzer's linear time algorithm for constructing an Eulerian cycle/tour."""
+        """Order the FDs within one cyclic SCC via an Eulerian tour (paper §5.1).
 
+        Uses Hierholzer's linear-time algorithm to traverse the SCC subgraph, tagging
+        each FD with an ascending ``order`` as its edge is traversed.
+
+        Args:
+            sub_g: Induced subgraph of one SCC.
+            start_v: Vertex index to start the tour from.
+            order_counter: First order value to assign in this SCC.
+
+        Returns:
+            The FDs of this SCC in traversal order.
+
+        Raises:
+            RuntimeError: If the subgraph admits no Eulerian cycle/tour.
+        """
         sub_order: list[FunctionalDependency] = []
 
         # Graph attributes
@@ -119,8 +161,11 @@ class FDGraph:
                 None,
             )
             if tour_start_v != start_v or tour_end_v is None:
+                # NOTE: latent NameError on this error path: `ordered_fds` is undefined
+                # here (the local is `sub_order`), and the message text is wrong (it
+                # is an Eulerian-tour failure, not an FD-count mismatch). Not fixed.
                 logger.error(
-                    f"Ordered FDs have length {sum([len(order) for order in ordered_fds])} while there are {len(self._set_of_fds)} FDs."
+                    f"Ordered FDs have length {sum([len(order) for order in ordered_fds])} while there are {len(self._set_of_fds)} FDs."  # noqa: F821
                 )
                 raise RuntimeError(
                     "Not possible to find a Eulerian tour and therefore not possible to order FDs."
@@ -188,8 +233,19 @@ class FDGraph:
     def _get_topological_sorting(
         self, g: Graph, order_counter: int
     ) -> list[FunctionalDependency]:
-        """Implements Kahn's Algorithm for computing a topological sorting using BFS."""
+        """Topologically order the FDs of one SCC-graph component (paper §4.2, §5.1).
 
+        Runs Kahn's BFS-based topological sort; in-degree-0 vertices seed the bound
+        (and source) attribute sets per §4.2, and multi-vertex SCCs are expanded via
+        :meth:`_order_subg`.
+
+        Args:
+            g: One weakly-connected component of the SCC graph.
+            order_counter: First order value to assign in this component.
+
+        Returns:
+            The component's FDs in traversal order.
+        """
         ordered_fds: list[FunctionalDependency] = []
 
         # Start with vertices of graph with in-degree 0
@@ -250,7 +306,14 @@ class FDGraph:
         return ordered_fds
 
     def order_fds(self) -> list[FunctionalDependency]:
-        """Orders each independent sub-component of the FD graph."""
+        """Compute the full FD traversal order across all components (paper §5.1).
+
+        Returns:
+            All FDs in the order the repair should apply them.
+
+        Raises:
+            ValueError: If the produced order does not cover every FD.
+        """
         # Perform topological sorting of each sub-component of SCCG
         ordered_fds: list[FunctionalDependency] = []
 
@@ -270,7 +333,16 @@ class FDGraph:
         return ordered_fds
 
     def dfs_tree(self, start_attribute: str) -> list[int]:
-        """Constructs a DFS tree and returns all visited edges."""
+        """Return the FD indices of the tree edges of a DFS from one attribute.
+
+        Used to distinguish non-cyclic (tree) FDs from back-edges (§3.3 quality).
+
+        Args:
+            start_attribute: Attribute name to root the DFS at.
+
+        Returns:
+            The ``fd_index`` of each edge visited as a DFS tree edge.
+        """
         start_v: int = self._fd_g.vs.find(name=start_attribute).index
         stack: deque[int] = deque([start_v])
         visited_v: set[int] = set([start_v])
@@ -286,6 +358,15 @@ class FDGraph:
         return dfs_edges
 
     def plot_graphs(self, dataset_name: str, output_dir: Path) -> None:
+        """Save PNG visualizations of the FD graph, components and SCC graph.
+
+        Args:
+            dataset_name: Name used to prefix output filenames.
+            output_dir: Directory the PNGs are written to.
+
+        Returns:
+            None.
+        """
         # Visualize FD graph
         logger.debug("Saving FD graph visualization")
         g_v_count: int = self._fd_g.vcount()
@@ -352,9 +433,13 @@ class FDGraph:
         plt.close()
 
     def graph_data(self) -> dict:
-        """Structured, JSON-serialisable description of the graphs for the UI.
+        """Return a JSON-serialisable description of the FD graph, SCCs and order.
 
-        Takes computed FD graph, SCCG, and FD order data and stores it as JSON data.
+        Bundles the FD graph nodes/edges, the SCC membership and the SCC-graph
+        ordering so the UI can render the graphs independently of the PNG export.
+
+        Returns:
+            Dict with keys ``"nodes"``, ``"edges"``, ``"sccs"`` and ``"scc_order"``.
         """
         g: Graph = self._fd_g
         comps: ig.VertexClustering = self._components
@@ -416,6 +501,21 @@ def get_ordered_fds(
     output_dir: Path = Path("output"),
     enable_plotting: bool = True,
 ) -> tuple[list[FunctionalDependency], float]:
+    """Compute the FD traversal order and mark cyclic FDs (paper §4.2, §5.1).
+
+    Builds the FD graph, orders the FDs via SCC topological sorting, and flags each
+    FD as cyclic or not (used later to treat back-edges as support-only in §3.3).
+    Optionally saves graph visualizations and structured graph JSON.
+
+    Args:
+        set_of_fds: Functional dependencies to order.
+        dataset_name: Name used to prefix any saved output.
+        output_dir: Directory plots and graph JSON are written to.
+        enable_plotting: If True, save graph visualizations and JSON.
+
+    Returns:
+        Tuple of (FDs in traversal order, elapsed ordering time in seconds).
+    """
     logger.info("Computing ordered FDs for pipeline execution")
 
     start: float = time.time()

@@ -36,15 +36,21 @@ _ROW = "__row__"  # 0-based row id column shown to the model and used to apply e
 def build_prompt(dirty: pl.DataFrame, fds: SetOfFDs) -> str:
     """Render one repair prompt: FD rules + the dirty table + the output contract.
 
-    Only the FD-relevant columns (`fds.unique_attributes`) are shown — non-FD
+    Only the FD-relevant columns (``fds.unique_attributes``) are shown — non-FD
     columns can't be FD-repaired anyway (Horizon leaves them too), and dropping
-    them shrinks the prompt a lot (e.g. insurance 41 -> 12 columns). `apply_edits`
-    still starts from the full dirty table, so scoring is over all columns as in
-    `repair_eval.ipynb`.
+    them shrinks the prompt a lot (e.g. insurance 41 -> 12 columns).
+    ``apply_edits`` still starts from the full dirty table, so scoring is over
+    all columns as in ``repair_eval.ipynb``. The table is emitted as CSV with a
+    leading ``__row__`` column (0-based, from ``with_row_index``) so the model
+    references cells by an unambiguous integer; ``apply_edits`` numbers rows the
+    same way, so row ids line up.
 
-    The table is emitted as CSV with a leading `__row__` column (0-based, from
-    `with_row_index`) so the model references cells by an unambiguous integer;
-    `apply_edits` numbers rows the same way, so row ids line up.
+    Args:
+        dirty: The dirty table to repair.
+        fds: FD rules shown to the model and used to pick shown columns.
+
+    Returns:
+        The full prompt string (rules, CSV table and output contract).
     """
     fd_lines = "\n".join(
         f"{', '.join(fd.lhs_attributes)} -> {fd.rhs}" for fd in fds
@@ -73,11 +79,20 @@ def build_prompt(dirty: pl.DataFrame, fds: SetOfFDs) -> str:
 
 
 def run_claude(prompt: str, model: str = "sonnet", timeout: int = 600) -> dict:
-    """Call `claude -p` headless with tools off; return its result text + metadata.
+    """Call ``claude -p`` headless with tools off; return result text + metadata.
 
     Uses subscription auth (no API key). The prompt goes via stdin because a
-    full table is far larger than a command-line argument allows. On any failure
-    (non-zero exit, timeout, unparseable CLI output) returns `{"error": ...}`.
+    full table is far larger than a command-line argument allows.
+
+    Args:
+        prompt: The full repair prompt to send on stdin.
+        model: Claude model alias to invoke (e.g. ``"sonnet"``).
+        timeout: Per-call timeout in seconds.
+
+    Returns:
+        On success, a dict with ``result``, ``session_id``, ``usage`` and
+        ``cost``. On any failure (non-zero exit, timeout, unparseable output),
+        a dict with an ``error`` key.
     """
     claude = shutil.which("claude") or "claude"
     cmd = [
@@ -111,8 +126,17 @@ def parse_edits(result_text: str) -> tuple[list[dict], int]:
     """Extract the JSON edit list from the model's reply.
 
     Tolerates code fences / surrounding prose by slicing to the outermost
-    brackets. Returns (structurally valid edits, count of malformed elements).
-    Raises ValueError if no JSON array can be parsed at all.
+    brackets. Accepts both compact ``[row, col, value]`` triples and
+    ``{"row", "col", "value"}`` objects.
+
+    Args:
+        result_text: The model's raw reply text.
+
+    Returns:
+        A tuple of (structurally valid edits, count of malformed elements).
+
+    Raises:
+        ValueError: If no JSON array can be parsed from the reply at all.
     """
     text = result_text.strip()
     start, end = text.find("["), text.rfind("]")
@@ -145,7 +169,14 @@ _MISSING = object()  # sentinel: distinguishes an absent value from a null/"" va
 
 
 def _as_row(v) -> int | None:
-    """Coerce a row id to int; accept ints and digit-strings (bools rejected)."""
+    """Coerce a row id to int; accept ints and digit-strings (bools rejected).
+
+    Args:
+        v: Candidate row id from the parsed edit element.
+
+    Returns:
+        The row id as an int, or None if it is not a valid integer row id.
+    """
     if isinstance(v, bool):
         return None
     if isinstance(v, int):
@@ -156,13 +187,22 @@ def _as_row(v) -> int | None:
 
 
 def apply_edits(dirty: pl.DataFrame, edits: list[dict]) -> tuple[pl.DataFrame, int]:
-    """Apply the model's edits into a copy of `dirty`; return (cleaned, n_skipped).
+    """Apply the model's edits into a copy of ``dirty``.
 
-    Edits with an out-of-range `row` or an unknown `col` are skipped and counted,
-    never fatal. Values are coerced to str so the frame stays all-Utf8 (the
-    `evaluate_repair` precondition). Rows are keyed by a 0-based `__row__` index
-    matching `build_prompt`, and updated with a keyed join per column (mirroring
-    `inject.apply_changes`), so duplicate keys overwrite, never fan out rows.
+    Values are coerced to str so the frame stays all-Utf8 (the
+    ``evaluate_repair`` precondition). Rows are keyed by a 0-based ``__row__``
+    index matching ``build_prompt`` and updated with a keyed join per column
+    (mirroring ``inject.apply_changes``), so duplicate keys overwrite rather
+    than fan out rows.
+
+    Args:
+        dirty: The dirty table to apply edits onto (not mutated).
+        edits: Parsed edits, each ``{"row", "col", "value"}``.
+
+    Returns:
+        A tuple of (cleaned table, count of edits skipped). Edits with an
+        out-of-range ``row`` or unknown ``col`` are skipped and counted, never
+        fatal.
     """
     height = dirty.height
     cols = set(dirty.columns)
@@ -195,11 +235,21 @@ def repair_one(
     run_idx: int,
     timeout: int = 600,
 ) -> dict:
-    """Repair one dirty table once with the LLM; write the cleaned CSV.
+    """Repair one dirty table once with the LLM and write the cleaned CSV.
 
-    Returns run metadata: status in {"ok", "cli_error", "parse_error"}, edit
-    counts, timing, token usage/cost, and the cleaned-CSV path (on success). The
-    caller loads the cleaned CSV and scores it with `evaluate_repair`.
+    The caller loads the cleaned CSV and scores it with ``evaluate_repair``.
+
+    Args:
+        dirty_path: Path to the dirty table to repair.
+        fds: FD rules to include in the prompt.
+        model: Claude model alias to invoke.
+        out_dir: Directory the cleaned CSV is written to.
+        run_idx: Run index, used in the output filename.
+        timeout: Per-call CLI timeout in seconds.
+
+    Returns:
+        Run metadata: ``status`` in ``{"ok", "cli_error", "parse_error"}``, edit
+        counts, timing, token usage/cost, and ``cleaned_path`` on success.
     """
     import time
 

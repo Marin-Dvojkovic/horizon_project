@@ -1,3 +1,11 @@
+"""FD-side metrics over a set of functional dependencies.
+
+Characterises the FDs themselves and their interaction with the data:
+attribute overlap and the four §4.1 pattern interaction cases (FD-only), plus
+LHS redundancy, G3 error, and violation clusters (data-dependent). Terminology
+(LHS/RHS, ``attr(fd)``) follows §3.1; interaction cases follow §4.1.
+"""
+
 import math
 from itertools import combinations
 
@@ -9,11 +17,19 @@ from horizon.fds.fd import FunctionalDependency
 def fd_lhs_redundancy(
     df: pl.DataFrame, fds: list[FunctionalDependency]
 ) -> dict[tuple, float]:
-    """`column_redundancy` generalised to each FD's LHS as a composite key.
+    """Generalise ``column_redundancy`` to each FD's LHS as a composite key.
 
-    For singleton LHS this matches `column_redundancy`; for composite LHS (§3.1)
-    the tuple of LHS values is the unit counted. Rows with a null in any LHS
-    column are dropped. FDs sharing the same LHS collapse to one entry.
+    For a singleton LHS this matches ``column_redundancy``; for a composite LHS
+    (§3.1) the tuple of LHS values is the unit counted. Rows with a null in any
+    LHS column are dropped. FDs sharing the same LHS collapse to one entry.
+
+    Args:
+        df: Table providing the LHS columns for each FD.
+        fds: FDs whose LHS redundancy is measured.
+
+    Returns:
+        Mapping of each distinct LHS attribute tuple to its redundancy in
+        [0, 1].
     """
     out: dict[tuple, float] = {}
     for fd in fds:
@@ -28,6 +44,18 @@ def fd_lhs_redundancy(
 
 
 def attribute_overlap(fds: list[FunctionalDependency]) -> float:
+    """Fraction of attribute occurrences across the FDs that are repeats.
+
+    Paper Table 1 "Attribute overlap": pools every LHS and RHS attribute
+    occurrence (case-insensitive) across all FDs, then returns
+    ``(total - distinct) / total`` — higher when FDs share attributes.
+
+    Args:
+        fds: FDs whose attribute occurrences are pooled.
+
+    Returns:
+        Overlap in [0, 1]; 0.0 for an empty FD list.
+    """
     if not fds:
         return 0.0
 
@@ -49,11 +77,23 @@ def attribute_overlap(fds: list[FunctionalDependency]) -> float:
 
 # TODO: This is not correct, can be checked manually tho
 def fd_interaction_cases(fds: list[FunctionalDependency]) -> set[str]:
-    """Which of the four §4.1 FD pattern interaction cases fire on any unordered pair.
+    """Report which of the four §4.1 pattern interaction cases fire on any pair.
 
-    LHS is treated as a set of attributes (composite LHS supported per §3.1). Cases
-    are not mutually exclusive: IC4 (cycle) strictly implies IC3 (chain), and composite
-    LHS can trigger several cases on a single pair.
+    Scans every unordered pair of FDs. LHS is treated as a set of attributes
+    (composite LHS supported per §3.1). Cases are not mutually exclusive: IC4
+    (cycle) strictly implies IC3 (chain), and a composite LHS can trigger
+    several cases on a single pair.
+
+    Note:
+        KNOWN LIMITATION — the case-detection logic is unverified and believed
+        incorrect (see the ``TODO`` above); results can be checked by hand but
+        should not be trusted as-is. Left unchanged intentionally.
+
+    Args:
+        fds: FDs whose pairwise interactions are classified.
+
+    Returns:
+        Subset of ``{"IC1", "IC2", "IC3", "IC4"}`` present across the FD pairs.
     """
     cases: set[str] = set()
     for fd_i, fd_j in combinations(fds, 2):
@@ -73,11 +113,18 @@ def fd_interaction_cases(fds: list[FunctionalDependency]) -> set[str]:
 
 
 def g3_error(df: pl.DataFrame, fd: FunctionalDependency) -> float:
-    """Standard G3: 1 − (Σ mode_count(rhs | lhs)) / N.
+    """Standard G3 error of ``fd`` on ``df``: ``1 - (sum mode_count(rhs | lhs)) / N``.
 
-    Min fraction of rows to delete so `fd` holds. Nulls in LHS/RHS dropped
-    first; empty input returns 0.0. PRECONDITION: `df` is pre-projected to
-    `attr(fd)` — function does not re-project.
+    The minimum fraction of rows to delete so ``fd`` holds. Nulls in LHS/RHS
+    are dropped first.
+
+    Args:
+        df: Table pre-projected to ``attr(fd)`` (the function does not
+            re-project).
+        fd: The functional dependency to measure.
+
+    Returns:
+        G3 error in [0, 1]; 0.0 for empty input.
     """
     sub = df.drop_nulls()
     n = sub.height
@@ -94,14 +141,20 @@ def g3_error(df: pl.DataFrame, fd: FunctionalDependency) -> float:
 
 
 def violation_clusters(df: pl.DataFrame, fd: FunctionalDependency) -> pl.DataFrame:
-    """Unique (LHS, RHS, count) rows inside any LHS group that violates `fd`.
+    """Return unique (LHS, RHS, count) rows inside any LHS group that violates ``fd``.
 
-    A group violates `fd` if it has ≥2 distinct RHS values; all of that group's
-    (LHS, RHS) pairs are returned (not just the minority RHS). Sorted by LHS,
-    then count desc so the dominant RHS in each group leads.
+    A group violates ``fd`` if it has >=2 distinct RHS values; all of that
+    group's (LHS, RHS) pairs are returned (not just the minority RHS). Nulls in
+    LHS/RHS are dropped first.
 
-    Nulls in LHS/RHS dropped first. PRECONDITION: `df` is pre-projected to
-    `attr(fd)` — function does not re-project.
+    Args:
+        df: Table pre-projected to ``attr(fd)`` (the function does not
+            re-project).
+        fd: The functional dependency to inspect.
+
+    Returns:
+        DataFrame of (LHS..., RHS, count) rows for violating groups, sorted by
+        LHS then count descending so the dominant RHS in each group leads.
     """
     sub = df.drop_nulls()
     counts = sub.group_by(list(fd.lhs_attributes) + [fd.rhs]).agg(
@@ -121,7 +174,15 @@ def violation_clusters(df: pl.DataFrame, fd: FunctionalDependency) -> pl.DataFra
 
 
 def characterize_fds(fds: list[FunctionalDependency]) -> dict:
-    """All FD-side metrics in one dict, keyed by function name."""
+    """Compute the data-independent FD-side metrics in one dict.
+
+    Args:
+        fds: FDs to characterise.
+
+    Returns:
+        Dict with ``attribute_overlap`` and ``fd_interaction_cases`` (keyed by
+        function name).
+    """
     return {
         "attribute_overlap": attribute_overlap(fds),
         "fd_interaction_cases": fd_interaction_cases(fds),
